@@ -26,11 +26,12 @@ import {
     Target, 
     Factory,
     Key,
-    X
+    X,
+    Search
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // --- TYPES ---
@@ -177,6 +178,14 @@ const FORCES_CONFIG: ForceData[] = [
 
 const parseJSON = (text: string) => {
     try {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        
+        if (start !== -1 && end !== -1 && end > start) {
+            const jsonCandidate = text.substring(start, end + 1);
+            return JSON.parse(jsonCandidate);
+        }
+        
         const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleaned);
     } catch (e) {
@@ -184,6 +193,20 @@ const parseJSON = (text: string) => {
         return null;
     }
 }
+
+const hexToRgb = (hex: string) => {
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    hex = hex.replace(shorthandRegex, (m, r, g, b) => {
+        return r + r + g + g + b + b;
+    });
+
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+};
 
 const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AIInsight | null> => {
   if (!apiKey) {
@@ -500,10 +523,12 @@ const EnvironmentCanvas: React.FC<EnvironmentCanvasProps> = ({ data, id }) => {
 
 // --- APP ---
 
+// Initialize PDF.js worker
 // @ts-ignore
 const pdfjs = pdfjsLib.default || pdfjsLib;
-if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+// Use cdnjs URL which provides a classic script worker that is compatible with most browser environments
+if (pdfjs) {
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 }
 
 const STORAGE_KEY = 'ENVIOSCAN_DATA';
@@ -515,7 +540,8 @@ const App = () => {
         const saved = localStorage.getItem(STORAGE_KEY);
         return saved ? JSON.parse(saved) : INITIAL_STATE;
     } catch (e) {
-        console.error("Failed to load saved data", e);
+        console.error("Failed to load saved data, clearing corrupted storage", e);
+        localStorage.removeItem(STORAGE_KEY);
         return INITIAL_STATE;
     }
   });
@@ -534,6 +560,7 @@ const App = () => {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const [uploadedAnalyses, setUploadedAnalyses] = useState<AnalysisState[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [comparativeReport, setComparativeReport] = useState<ComparativeReport | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -648,77 +675,319 @@ const App = () => {
         const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        pdf.setProperties({ title: 'Environment Analysis', subject: JSON.stringify(data), author: data.author, creator: 'EnvioScan App' });
+        
+        pdf.setProperties({ 
+            title: 'Environment Analysis', 
+            subject: JSON.stringify(data), 
+            author: data.author, 
+            creator: 'EnvioScan App' 
+        });
+
+        // --- Page 1: Canvas Image ---
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
         const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        
+        // Calculate fit dimensions to maintain aspect ratio within page
+        const imgRatio = imgProps.width / imgProps.height;
+        let finalImgWidth = pageWidth;
+        let finalImgHeight = pageWidth / imgRatio;
+
+        if (finalImgHeight > pageHeight) {
+            finalImgHeight = pageHeight;
+            finalImgWidth = pageHeight * imgRatio;
+        }
+
+        // Center image
+        const xOffset = (pageWidth - finalImgWidth) / 2;
+        const yOffset = (pageHeight - finalImgHeight) / 2;
+        pdf.addImage(imgData, 'PNG', xOffset, yOffset, finalImgWidth, finalImgHeight);
+
+        // --- Page 2: Detailed Inputs Report ---
+        pdf.addPage();
+        const margin = 20;
+        let yCursor = margin;
+        const contentWidth = pageWidth - (margin * 2);
+
+        // Helper to check for page breaks
+        const ensureSpace = (heightNeeded: number) => {
+            if (yCursor + heightNeeded > pageHeight - margin) {
+                pdf.addPage();
+                yCursor = margin;
+                return true; 
+            }
+            return false;
+        };
+
+        // Title for Data Section
+        pdf.setFontSize(20);
+        pdf.setTextColor(31, 41, 55); // gray-800
+        pdf.text("Detailed Environment Data", margin, yCursor);
+        yCursor += 15;
+
+        if (data.description) {
+            ensureSpace(20);
+            pdf.setFontSize(14);
+            pdf.setTextColor(75, 85, 99); // gray-600
+            pdf.text("Project Context", margin, yCursor);
+            yCursor += 8;
+            
+            pdf.setFontSize(11);
+            pdf.setTextColor(55, 65, 81); // gray-700
+            const lines = pdf.splitTextToSize(data.description, contentWidth);
+            
+            lines.forEach((line: string) => {
+                if(ensureSpace(7)) {
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(55, 65, 81);
+                }
+                pdf.text(line, margin, yCursor);
+                yCursor += 6;
+            });
+            yCursor += 10;
+        }
+
+        FORCES_CONFIG.forEach(force => {
+            ensureSpace(25);
+            
+            // Header with color
+            const color = hexToRgb(force.color);
+            pdf.setTextColor(color.r, color.g, color.b);
+            pdf.setFontSize(14);
+            pdf.setFont("helvetica", "bold");
+            pdf.text(force.title.toUpperCase(), margin, yCursor);
+            yCursor += 8;
+            
+            // Subsections
+            force.subSections.forEach(sub => {
+                // @ts-ignore
+                const value = data[force.id][sub.id];
+                if(!value) return; 
+                
+                ensureSpace(20);
+                
+                pdf.setFontSize(10);
+                pdf.setTextColor(107, 114, 128); // gray-500
+                pdf.setFont("helvetica", "bold");
+                pdf.text(sub.label.toUpperCase(), margin, yCursor);
+                yCursor += 5;
+                
+                pdf.setFont("helvetica", "normal");
+                pdf.setTextColor(55, 65, 81); // gray-700
+                pdf.setFontSize(11);
+                
+                const textLines = pdf.splitTextToSize(value, contentWidth);
+                textLines.forEach((line: string) => {
+                    if(ensureSpace(7)) {
+                         pdf.setFont("helvetica", "normal");
+                         pdf.setTextColor(55, 65, 81);
+                         pdf.setFontSize(11);
+                    }
+                    pdf.text(line, margin, yCursor);
+                    yCursor += 6;
+                });
+                yCursor += 6; 
+            });
+            
+            yCursor += 8; 
+        });
+
+
+        // --- Page 3+: AI Insights Report ---
         if (insights) {
             pdf.addPage();
-            pdf.setFontSize(20);
-            pdf.text("AI Strategic Analysis", 20, 20);
-            let y = 30;
-            if (data.author) { pdf.setFontSize(10); pdf.setTextColor(100); pdf.text(`Prepared by: ${data.author}`, 20, y); y += 6; } 
-            if (data.description) {
-                pdf.setFontSize(10); pdf.setTextColor(100);
-                const descLines = pdf.splitTextToSize(data.description, 250);
-                pdf.text(descLines, 20, y);
-                y += (descLines.length * 5) + 10;
-            } else { y += 10; }
-            pdf.setFillColor(243, 244, 246);
-            pdf.rect(20, y, 100, 20, 'F');
+            yCursor = margin;
+
+            // Title
+            pdf.setFontSize(22);
+            pdf.setTextColor(17, 24, 39); // Gray 900
+            pdf.text("AI Strategic Analysis", margin, yCursor);
+            yCursor += 15;
+
+            // Author Info
+            pdf.setFontSize(10);
+            pdf.setTextColor(107, 114, 128); // Gray 500
+            if (data.author) {
+                pdf.text(`Prepared by: ${data.author}`, margin, yCursor);
+                yCursor += 10;
+            } 
+            
+            // Data Quality Box (Dynamic Height)
+            const feedbackText = insights.dataQualityFeedback || "No feedback available.";
+            const feedbackLines = pdf.splitTextToSize(feedbackText, contentWidth - 10);
+            const feedbackBlockHeight = feedbackLines.length * 5;
+            const boxHeight = 20 + feedbackBlockHeight;
+
+            ensureSpace(boxHeight + 10);
+
+            // Draw Box
+            pdf.setFillColor(243, 244, 246); // bg-gray-100
+            pdf.setDrawColor(229, 231, 235); // border-gray-200
+            pdf.roundedRect(margin, yCursor, contentWidth, boxHeight, 3, 3, 'FD');
+
+            // Box Content
             pdf.setFontSize(12);
-            pdf.setTextColor(55, 65, 81);
-            pdf.text(`Data Quality Score: ${insights.dataQualityScore}/100`, 25, y + 8);
-            pdf.setFontSize(9);
-            pdf.text(pdf.splitTextToSize(insights.dataQualityFeedback || "", 90), 25, y + 14);
-            y += 28;
-            pdf.setFontSize(14); pdf.setTextColor(22, 163, 74); pdf.text("Opportunities", 20, y);
-            pdf.setFontSize(10); pdf.setTextColor(0,0,0); y += 10;
-            insights.opportunities.forEach(op => { const lines = pdf.splitTextToSize(`• ${op}`, 250); pdf.text(lines, 20, y); y += (lines.length * 5) + 2; });
-            y += 10; pdf.setFontSize(14); pdf.setTextColor(220, 38, 38); pdf.text("Threats", 20, y);
-            pdf.setFontSize(10); pdf.setTextColor(0,0,0); y += 10;
-            insights.threats.forEach(th => { const lines = pdf.splitTextToSize(`• ${th}`, 250); pdf.text(lines, 20, y); y += (lines.length * 5) + 2; });
-            y += 10; pdf.setFontSize(14); pdf.setTextColor(37, 99, 235); pdf.text("Strategic Advice", 20, y);
-            pdf.setFontSize(10); pdf.setTextColor(0,0,0); y += 10;
-            const adviceLines = pdf.splitTextToSize(insights.strategicAdvice, 250);
-            pdf.text(adviceLines, 20, y);
+            pdf.setTextColor(31, 41, 55); // gray-800
+            pdf.text(`Data Quality Score: ${insights.dataQualityScore}/100`, margin + 5, yCursor + 8);
+            
+            pdf.setFontSize(10);
+            pdf.setTextColor(75, 85, 99); // gray-600
+            pdf.text(feedbackLines, margin + 5, yCursor + 16);
+            
+            yCursor += boxHeight + 15;
+
+            // Helper to render sections (Opportunities, Threats)
+            const renderSection = (title: string, items: string[], colorHex: string) => {
+                ensureSpace(15);
+                pdf.setFontSize(16);
+                const rgb = hexToRgb(colorHex);
+                pdf.setTextColor(rgb.r, rgb.g, rgb.b);
+                pdf.setFont("helvetica", "bold");
+                pdf.text(title, margin, yCursor);
+                yCursor += 8;
+
+                pdf.setFontSize(11);
+                pdf.setFont("helvetica", "normal");
+                pdf.setTextColor(55, 65, 81); // gray-700
+
+                if (!items || items.length === 0) {
+                    pdf.text("• None identified", margin, yCursor);
+                    yCursor += 8;
+                } else {
+                    items.forEach(item => {
+                        const bullet = "• ";
+                        const wrappedItem = pdf.splitTextToSize(item, contentWidth - 8);
+                        const itemHeight = wrappedItem.length * 6;
+                        
+                        ensureSpace(itemHeight);
+                        
+                        pdf.text(bullet, margin, yCursor);
+                        pdf.text(wrappedItem, margin + 6, yCursor);
+                        yCursor += itemHeight + 2;
+                    });
+                }
+                yCursor += 8;
+            };
+
+            renderSection("Opportunities", insights.opportunities, "#16a34a"); // green-600
+            renderSection("Threats", insights.threats, "#dc2626"); // red-600
+
+            // Strategic Advice
+            ensureSpace(15);
+            pdf.setFontSize(16);
+            pdf.setTextColor(37, 99, 235); // blue-600
+            pdf.setFont("helvetica", "bold");
+            pdf.text("Strategic Advice", margin, yCursor);
+            yCursor += 8;
+
+            pdf.setFontSize(11);
+            pdf.setFont("helvetica", "normal");
+            pdf.setTextColor(31, 41, 55); // gray-800
+            
+            const adviceLines = pdf.splitTextToSize(insights.strategicAdvice, contentWidth);
+            adviceLines.forEach((line: string) => {
+                if (ensureSpace(7)) {
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(31, 41, 55);
+                }
+                pdf.text(line, margin, yCursor);
+                yCursor += 6;
+            });
         }
+        
         pdf.save('environment-analysis.pdf');
+
+        // Export JSON alongside PDF
+        const dataStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `environment-analysis-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     } catch (err) { console.error("PDF Export failed", err); }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
     const newAnalyses: AnalysisState[] = [];
+    let errorCount = 0;
     setIsComparing(true);
+
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjs.getDocument(arrayBuffer).promise;
-            const metadata = await pdf.getMetadata();
-            if (metadata?.info?.Subject) {
-                const json = JSON.parse(metadata.info.Subject);
-                if (json.keyTrends && json.marketForces) { newAnalyses.push(json); }
+            let json = null;
+            if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                const text = await file.text();
+                json = JSON.parse(text);
+            } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                const arrayBuffer = await file.arrayBuffer();
+                if (pdfjs && pdfjs.getDocument) {
+                    try {
+                        const loadingTask = pdfjs.getDocument({
+                            data: arrayBuffer,
+                            disableFontFace: true, 
+                        });
+                        const pdf = await loadingTask.promise;
+                        const metadata = await pdf.getMetadata();
+                        if (metadata?.info?.Subject) {
+                             const subject = metadata.info.Subject;
+                             if (typeof subject === 'string' && subject.trim().startsWith('{')) {
+                                try {
+                                    json = JSON.parse(subject);
+                                } catch (e) {
+                                    console.warn("Found Subject metadata but failed to parse as JSON", e);
+                                }
+                             }
+                        }
+                    } catch (pdfErr) {
+                         console.error(`Error processing PDF ${file.name}`, pdfErr);
+                         errorCount++;
+                    }
+                }
             }
-        } catch (error) { console.error(`Error parsing file ${file.name}`, error); }
+
+            if (json && json.keyTrends && json.marketForces) {
+                newAnalyses.push(json);
+            } else {
+                errorCount++;
+            }
+        } catch (error) { 
+            console.error(`Error parsing file ${file.name}`, error); 
+            errorCount++;
+        }
     }
     setUploadedAnalyses(prev => [...prev, ...newAnalyses]);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIsComparing(false);
+
+    if (errorCount > 0) {
+        alert(`Imported ${newAnalyses.length} report(s). Skipped ${errorCount} invalid file(s). Note: Only PDF/JSON files exported from EnvioScan are supported.`);
+    }
   };
+
+  const filteredAnalyses = uploadedAnalyses.filter(a => 
+    (a.author?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+    (a.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+  );
 
   const runComparison = async () => {
       if (!apiKey) {
           setShowApiKeyModal(true);
           return;
       }
-      if (uploadedAnalyses.length === 0) return;
+      
+      const targetAnalyses = filteredAnalyses;
+      if (targetAnalyses.length === 0) return;
+
       setIsComparing(true);
       try {
-        const report = await generateComparativeReport(uploadedAnalyses, apiKey);
+        const report = await generateComparativeReport(targetAnalyses, apiKey);
         if (report) {
             setComparativeReport(report);
         } else {
@@ -789,33 +1058,86 @@ const App = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mb-8">
                     <div className="text-center mb-8">
                         <h2 className="text-2xl font-bold text-gray-900">Comparative Analysis</h2>
-                        <p className="text-gray-500 max-w-2xl mx-auto mt-2">Upload multiple PDF reports generated by EnvioScan to identify patterns.</p>
+                        <p className="text-gray-500 max-w-2xl mx-auto mt-2">Upload multiple JSON or PDF reports generated by EnvioScan to identify patterns.</p>
                     </div>
                     <div className="max-w-xl mx-auto">
                         <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
-                            <input ref={fileInputRef} type="file" accept="application/pdf" multiple onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                            <input ref={fileInputRef} type="file" accept=".pdf,.json,application/pdf,application/json" multiple={true} onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                             <div className="flex flex-col items-center gap-3">
                                 <div className="p-4 bg-indigo-50 text-indigo-600 rounded-full"> <FileUp size={32} /> </div>
-                                <div> <h3 className="font-semibold text-gray-900">Click to upload PDFs</h3> <p className="text-sm text-gray-500 mt-1">Select multiple .pdf files exported from EnvioScan</p> </div>
+                                <div> <h3 className="font-semibold text-gray-900">Click to upload files</h3> <p className="text-sm text-gray-500 mt-1">Select multiple .json or .pdf files exported from EnvioScan</p> </div>
                             </div>
                         </div>
                         {uploadedAnalyses.length > 0 && (
-                            <div className="mt-6">
-                                <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Loaded Reports ({uploadedAnalyses.length})</h4>
-                                <div className="space-y-2 max-h-48 overflow-y-auto mb-6">
-                                    {uploadedAnalyses.map((analysis, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-gray-500 text-xs">{idx + 1}</div>
-                                                <div> <div className="font-medium text-gray-900">{analysis.author || 'Unknown Author'}</div> <div className="text-xs text-gray-500 truncate max-w-[200px]">{analysis.description || 'No description'}</div> </div>
-                                            </div>
-                                            <CheckCircle2 size={16} className="text-green-500" />
-                                        </div>
-                                    ))}
+                            <div className="mt-8 border-t border-gray-100 pt-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                                        Loaded Reports 
+                                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{uploadedAnalyses.length}</span>
+                                    </h4>
+                                    <div className="relative w-full sm:w-64">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search reports..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                                        />
+                                    </div>
                                 </div>
-                                <button onClick={runComparison} disabled={isComparing} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg font-medium shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70">
-                                    {isComparing ? <Loader2 className="animate-spin" size={20} /> : <BarChart3 size={20} />} {isComparing ? 'Analyzing Patterns...' : 'Generate Statistical Report'}
-                                </button>
+                                
+                                <div className="space-y-2 max-h-60 overflow-y-auto mb-6 pr-1 custom-scrollbar">
+                                    {filteredAnalyses.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-400 text-sm bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                            No reports match your search "{searchTerm}"
+                                        </div>
+                                    ) : (
+                                        filteredAnalyses.map((analysis, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm hover:border-indigo-200 transition-colors group">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-gray-500 text-xs group-hover:text-indigo-600 group-hover:border-indigo-200 transition-colors">
+                                                        {uploadedAnalyses.indexOf(analysis) + 1}
+                                                    </div>
+                                                    <div> 
+                                                        <div className="font-medium text-gray-900">{analysis.author || 'Unknown Author'}</div> 
+                                                        <div className="text-xs text-gray-500 truncate max-w-[200px] sm:max-w-[300px]">{analysis.description || 'No description'}</div> 
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => {
+                                                        const newlist = uploadedAnalyses.filter(a => a !== analysis);
+                                                        setUploadedAnalyses(newlist);
+                                                    }}
+                                                    className="text-gray-400 hover:text-red-500 p-1 rounded-md hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                    title="Remove report"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                
+                                <div className="flex items-center justify-between gap-4 pt-2">
+                                    {uploadedAnalyses.length > 0 && (
+                                         <button 
+                                            onClick={() => {
+                                                if(window.confirm('Remove all uploaded reports?')) {
+                                                    setUploadedAnalyses([]);
+                                                    setSearchTerm('');
+                                                }
+                                            }}
+                                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors"
+                                         >
+                                            Clear All
+                                         </button>
+                                    )}
+                                    <button onClick={runComparison} disabled={isComparing || filteredAnalyses.length === 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg font-medium shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                        {isComparing ? <Loader2 className="animate-spin" size={20} /> : <BarChart3 size={20} />} 
+                                        {isComparing ? 'Analyzing Patterns...' : `Compare ${filteredAnalyses.length} Report${filteredAnalyses.length !== 1 ? 's' : ''}`}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -829,17 +1151,17 @@ const App = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2"> <div className="w-2 h-6 bg-green-500 rounded-full"></div> Common Patterns </h3>
-                                <ul className="space-y-3"> {comparativeReport.commonPatterns.map((pat, i) => ( <li key={i} className="flex items-start gap-3 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg"> <span className="font-bold text-gray-400">0{i+1}</span> {pat} </li> ))} </ul>
+                                <ul className="space-y-3"> {(comparativeReport.commonPatterns || []).map((pat, i) => ( <li key={i} className="flex items-start gap-3 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg"> <span className="font-bold text-gray-400">0{i+1}</span> {pat} </li> ))} </ul>
                             </div>
                              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2"> <div className="w-2 h-6 bg-orange-500 rounded-full"></div> Significant Outliers </h3>
-                                <ul className="space-y-3"> {comparativeReport.outliers.map((out, i) => ( <li key={i} className="flex items-start gap-3 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg"> <AlertCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" /> {out} </li> ))} </ul>
+                                <ul className="space-y-3"> {(comparativeReport.outliers || []).map((out, i) => ( <li key={i} className="flex items-start gap-3 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg"> <AlertCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" /> {out} </li> ))} </ul>
                             </div>
                         </div>
                         <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
                             <h3 className="text-lg font-bold text-gray-900 mb-6">Topic Frequency Analysis</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                {comparativeReport.aggregatedStats.map((stat, i) => (
+                                {(comparativeReport.aggregatedStats || []).map((stat, i) => (
                                     <div key={i} className="p-4 border border-gray-200 rounded-xl hover:border-indigo-300 transition-colors">
                                         <div className="flex items-center justify-between mb-2"> <span className="font-bold text-gray-900">{stat.label}</span> <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded-full"> {stat.count}x </span> </div>
                                         <p className="text-xs text-gray-500">{stat.description}</p>
