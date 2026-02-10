@@ -184,18 +184,21 @@ const parseJSON = (text: string) => {
 }
 
 const generateInsights = async (data: AnalysisState): Promise<AIInsight | null> => {
-  if (!process.env.API_KEY) {
-    console.warn("API Key not found");
+  // Safe access to API Key in browser environment
+  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+
+  if (!apiKey) {
+    console.warn("API Key not found in process.env");
     return {
-        opportunities: ["API Key missing - cannot generate insights."],
+        opportunities: ["API Key missing - cannot generate insights. Make sure process.env.API_KEY is configured."],
         threats: [],
-        strategicAdvice: "Please configure your environment variables.",
+        strategicAdvice: "Please configure your environment variables with a valid API_KEY.",
         dataQualityScore: 0,
         dataQualityFeedback: "No API key provided."
     };
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   const prompt = `
     Analyze the following Business Model Environment data based on Osterwalder's framework.
@@ -250,8 +253,20 @@ const generateInsights = async (data: AnalysisState): Promise<AIInsight | null> 
 };
 
 const generateComparativeReport = async (analyses: AnalysisState[]): Promise<ComparativeReport | null> => {
-    if (!process.env.API_KEY) return null;
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Safe access to API Key in browser environment
+    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+
+    if (!apiKey) {
+        console.warn("API Key not found");
+        return {
+            executiveSummary: "API Key missing. Cannot generate report.",
+            commonPatterns: [],
+            outliers: [],
+            aggregatedStats: []
+        };
+    }
+    
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     const cleanData = analyses.map((a, index) => ({
         id: index + 1,
         author: a.author,
@@ -474,10 +489,20 @@ const App = () => {
 
   const handleGenerateInsights = async () => {
     setIsGenerating(true);
-    const result = await generateInsights(data);
-    setInsights(result);
-    setIsGenerating(false);
-    setViewMode('visualize');
+    try {
+        const result = await generateInsights(data);
+        if (result) {
+            setInsights(result);
+            setViewMode('visualize');
+        } else {
+             alert("Failed to generate insights. Please try again.");
+        }
+    } catch (err) {
+        console.error("Critical error generating insights", err);
+        alert("An error occurred. Check console.");
+    } finally {
+        setIsGenerating(false);
+    }
   };
 
   const handleSaveProgress = () => {
@@ -589,9 +614,19 @@ const App = () => {
   const runComparison = async () => {
       if (uploadedAnalyses.length === 0) return;
       setIsComparing(true);
-      const report = await generateComparativeReport(uploadedAnalyses);
-      setComparativeReport(report);
-      setIsComparing(false);
+      try {
+        const report = await generateComparativeReport(uploadedAnalyses);
+        if (report) {
+            setComparativeReport(report);
+        } else {
+            alert("Failed to generate comparative report.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Comparison failed.");
+      } finally {
+        setIsComparing(false);
+      }
   };
 
   const activeForceConfig = FORCES_CONFIG.find(f => f.id === activeTab);

@@ -9,6 +9,10 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
+    <!-- Polyfill process.env for browser environment to prevent crashes -->
+    <script>
+      window.process = window.process || { env: { API_KEY: '' } };
+    </script>
     <!-- Add Babel for in-browser JSX/TS transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
