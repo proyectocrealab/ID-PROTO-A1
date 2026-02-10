@@ -307,11 +307,15 @@ const generateComparativeReport = async (analyses: AnalysisState[], apiKey: stri
 const ApiKeyModal = ({ 
     isOpen, 
     onClose, 
-    onSave 
+    onSave,
+    onRemove,
+    hasKey
 }: { 
     isOpen: boolean; 
     onClose: () => void; 
     onSave: (key: string) => void; 
+    onRemove: () => void;
+    hasKey: boolean;
 }) => {
     const [key, setKey] = useState('');
 
@@ -320,7 +324,7 @@ const ApiKeyModal = ({
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative">
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
                     <X size={20} />
                 </button>
                 
@@ -338,24 +342,41 @@ const ApiKeyModal = ({
                     
                     <div>
                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
-                            Enter your API Key
+                            {hasKey ? 'Update API Key' : 'Enter your API Key'}
                         </label>
                         <input 
                             type="password" 
                             value={key}
                             onChange={(e) => setKey(e.target.value)}
-                            placeholder="AIzaSy..."
+                            placeholder={hasKey ? "Enter new key to update..." : "AIzaSy..."}
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-mono text-sm"
                         />
                     </div>
 
-                    <button 
-                        onClick={() => onSave(key)}
-                        disabled={!key}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        Save API Key
-                    </button>
+                    <div className="space-y-3">
+                        <button 
+                            type="button"
+                            onClick={() => onSave(key)}
+                            disabled={!key}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {hasKey ? 'Update API Key' : 'Save API Key'}
+                        </button>
+
+                        {hasKey && (
+                            <button 
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onRemove();
+                                }}
+                                className="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Trash2 size={16} /> Remove Saved Key
+                            </button>
+                        )}
+                    </div>
 
                     <div className="pt-4 border-t border-gray-100 text-center">
                         <a 
@@ -530,6 +551,14 @@ const App = () => {
       setApiKey(key);
       localStorage.setItem(API_KEY_STORAGE, key);
       setShowApiKeyModal(false);
+  };
+
+  const handleRemoveApiKey = () => {
+      if (window.confirm("Are you sure you want to remove your API Key? You will need to enter it again to use AI features.")) {
+        setApiKey('');
+        localStorage.removeItem(API_KEY_STORAGE);
+        setShowApiKeyModal(false);
+      }
   };
 
   const handleInputChange = (category: ForceCategory, field: string, value: string) => {
@@ -720,7 +749,9 @@ const App = () => {
       <ApiKeyModal 
         isOpen={showApiKeyModal} 
         onClose={() => setShowApiKeyModal(false)} 
-        onSave={handleSaveApiKey} 
+        onSave={handleSaveApiKey}
+        onRemove={handleRemoveApiKey}
+        hasKey={!!apiKey}
       />
 
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
