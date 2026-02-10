@@ -24,7 +24,9 @@ import {
     TrendingUp, 
     Globe, 
     Target, 
-    Factory
+    Factory,
+    Key,
+    X
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -183,19 +185,10 @@ const parseJSON = (text: string) => {
     }
 }
 
-const generateInsights = async (data: AnalysisState): Promise<AIInsight | null> => {
-  // Safe access to API Key in browser environment
-  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-
+const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AIInsight | null> => {
   if (!apiKey) {
-    console.warn("API Key not found in process.env");
-    return {
-        opportunities: ["API Key missing - cannot generate insights. Make sure process.env.API_KEY is configured."],
-        threats: [],
-        strategicAdvice: "Please configure your environment variables with a valid API_KEY.",
-        dataQualityScore: 0,
-        dataQualityFeedback: "No API key provided."
-    };
+    console.warn("API Key missing");
+    return null;
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
@@ -248,23 +241,12 @@ const generateInsights = async (data: AnalysisState): Promise<AIInsight | null> 
 
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return null;
+    throw error;
   }
 };
 
-const generateComparativeReport = async (analyses: AnalysisState[]): Promise<ComparativeReport | null> => {
-    // Safe access to API Key in browser environment
-    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-
-    if (!apiKey) {
-        console.warn("API Key not found");
-        return {
-            executiveSummary: "API Key missing. Cannot generate report.",
-            commonPatterns: [],
-            outliers: [],
-            aggregatedStats: []
-        };
-    }
+const generateComparativeReport = async (analyses: AnalysisState[], apiKey: string): Promise<ComparativeReport | null> => {
+    if (!apiKey) return null;
     
     const ai = new GoogleGenAI({ apiKey: apiKey });
     const cleanData = analyses.map((a, index) => ({
@@ -316,11 +298,80 @@ const generateComparativeReport = async (analyses: AnalysisState[]): Promise<Com
         return parseJSON(text);
     } catch (error) {
         console.error("Gemini Comparative Error", error);
-        return null;
+        throw error;
     }
 }
 
 // --- COMPONENTS ---
+
+const ApiKeyModal = ({ 
+    isOpen, 
+    onClose, 
+    onSave 
+}: { 
+    isOpen: boolean; 
+    onClose: () => void; 
+    onSave: (key: string) => void; 
+}) => {
+    const [key, setKey] = useState('');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative">
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <X size={20} />
+                </button>
+                
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
+                        <Key size={24} />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">Gemini API Key</h2>
+                </div>
+
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                        To generate insights, this app requires a Google Gemini API Key. Your key is stored locally in your browser and never sent to our servers.
+                    </p>
+                    
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
+                            Enter your API Key
+                        </label>
+                        <input 
+                            type="password" 
+                            value={key}
+                            onChange={(e) => setKey(e.target.value)}
+                            placeholder="AIzaSy..."
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-mono text-sm"
+                        />
+                    </div>
+
+                    <button 
+                        onClick={() => onSave(key)}
+                        disabled={!key}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Save API Key
+                    </button>
+
+                    <div className="pt-4 border-t border-gray-100 text-center">
+                        <a 
+                            href="https://aistudio.google.com/app/apikey" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium hover:underline"
+                        >
+                            Get a free Gemini API Key →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 interface EnvironmentCanvasProps {
   data: AnalysisState;
@@ -435,6 +486,7 @@ if (pdfjs.GlobalWorkerOptions) {
 }
 
 const STORAGE_KEY = 'ENVIOSCAN_DATA';
+const API_KEY_STORAGE = 'ENVIOSCAN_API_KEY';
 
 const App = () => {
   const [data, setData] = useState<AnalysisState>(() => {
@@ -453,6 +505,13 @@ const App = () => {
   const [insights, setInsights] = useState<AIInsight | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
+  // API Key State
+  const [apiKey, setApiKey] = useState<string>(() => {
+      // Check localStorage or fallback to empty (secure default)
+      return localStorage.getItem(API_KEY_STORAGE) || '';
+  });
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+
   const [uploadedAnalyses, setUploadedAnalyses] = useState<AnalysisState[]>([]);
   const [comparativeReport, setComparativeReport] = useState<ComparativeReport | null>(null);
   const [isComparing, setIsComparing] = useState(false);
@@ -466,6 +525,12 @@ const App = () => {
           console.error("Failed to save data", e);
       }
   }, [data]);
+
+  const handleSaveApiKey = (key: string) => {
+      setApiKey(key);
+      localStorage.setItem(API_KEY_STORAGE, key);
+      setShowApiKeyModal(false);
+  };
 
   const handleInputChange = (category: ForceCategory, field: string, value: string) => {
     setData(prev => ({ ...prev, [category]: { ...prev[category], [field]: value } }));
@@ -488,9 +553,14 @@ const App = () => {
   };
 
   const handleGenerateInsights = async () => {
+    if (!apiKey) {
+        setShowApiKeyModal(true);
+        return;
+    }
+
     setIsGenerating(true);
     try {
-        const result = await generateInsights(data);
+        const result = await generateInsights(data, apiKey);
         if (result) {
             setInsights(result);
             setViewMode('visualize');
@@ -499,7 +569,7 @@ const App = () => {
         }
     } catch (err) {
         console.error("Critical error generating insights", err);
-        alert("An error occurred. Check console.");
+        alert("An error occurred. Make sure your API Key is valid.");
     } finally {
         setIsGenerating(false);
     }
@@ -612,10 +682,14 @@ const App = () => {
   };
 
   const runComparison = async () => {
+      if (!apiKey) {
+          setShowApiKeyModal(true);
+          return;
+      }
       if (uploadedAnalyses.length === 0) return;
       setIsComparing(true);
       try {
-        const report = await generateComparativeReport(uploadedAnalyses);
+        const report = await generateComparativeReport(uploadedAnalyses, apiKey);
         if (report) {
             setComparativeReport(report);
         } else {
@@ -623,7 +697,7 @@ const App = () => {
         }
       } catch (err) {
         console.error(err);
-        alert("Comparison failed.");
+        alert("Comparison failed. Check your API Key.");
       } finally {
         setIsComparing(false);
       }
@@ -643,6 +717,12 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100">
+      <ApiKeyModal 
+        isOpen={showApiKeyModal} 
+        onClose={() => setShowApiKeyModal(false)} 
+        onSave={handleSaveApiKey} 
+      />
+
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -655,10 +735,20 @@ const App = () => {
                 </div>
             </div>
           </div>
-          <div className="flex items-center bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'edit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <Edit3 size={16} /> Input </button>
-            <button onClick={() => setViewMode('visualize')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'visualize' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <FileText size={16} /> Visualize </button>
-            <button onClick={() => setViewMode('compare')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'compare' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <BarChart3 size={16} /> Compare </button>
+          <div className="flex items-center gap-2">
+            <button 
+                onClick={() => setShowApiKeyModal(true)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all border ${apiKey ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 animate-pulse'}`}
+            >
+                <Key size={14} />
+                {apiKey ? 'API Key Set' : 'Set API Key'}
+            </button>
+            <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
+            <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+                <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'edit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <Edit3 size={16} /> Input </button>
+                <button onClick={() => setViewMode('visualize')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'visualize' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <FileText size={16} /> Visualize </button>
+                <button onClick={() => setViewMode('compare')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'compare' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <BarChart3 size={16} /> Compare </button>
+            </div>
           </div>
         </div>
       </header>
