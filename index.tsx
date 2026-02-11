@@ -27,7 +27,10 @@ import {
     Factory,
     Key,
     X,
-    Search
+    Search,
+    BookOpen,
+    HelpCircle,
+    GraduationCap
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -111,6 +114,53 @@ const INITIAL_STATE: AnalysisState = {
     infrastructure: '',
     resources: '',
   },
+};
+
+const EXAMPLE_DATA: AnalysisState = {
+    author: "Alex Chen",
+    description: "Strategic analysis for 'VerdeGrow', an urban vertical farming startup targeting high-end restaurants and eco-conscious grocery chains in metropolitan areas.",
+    keyTrends: {
+        regulatory: "Increasing urban zoning incentives for green businesses. Stricter food safety regulations for hydroponics. Carbon tax credits implementation.",
+        technology: "IoT sensors for humidity/soil control becoming cheaper. LED efficiency doubling every 3 years. AI-driven crop cycle management.",
+        societal: "Massive shift towards 'hyper-local' food sourcing. Rising concern over pesticide use in traditional farming. Urbanites desiring connection to nature.",
+        socioeconomic: "Rising food transport costs due to fuel prices making local production competitive. Middle-class expansion in target cities demanding premium produce."
+    },
+    marketForces: {
+        segments: "High-end restaurants (B2B), Organic grocery chains (B2B), Subscription box for health-conscious households (B2C).",
+        needs: "Year-round availability of seasonal crops. Zero-pesticide guarantee. Reduced carbon footprint transparency.",
+        issues: "Price sensitivity in B2C mass market. Skepticism about nutrient density of hydroponic vs soil-grown.",
+        switchingCosts: "Restaurants have long-term contracts with broadline distributors. Low switching costs for individual consumers.",
+        revenue: "High margins on specialty herbs and microgreens. Recurring revenue model via subscriptions. Premium pricing justifiable by 'freshness' factor."
+    },
+    industryForces: {
+        competitors: "Traditional rural organic farms (seasonal limits). Greenhouse importers (high carbon footprint). Other small urban setups (mostly hobbyist scale).",
+        newEntrants: "Tech giants investing in AgTech (e.g., Amazon, Google Ventures). Container farming franchises lowering entry barriers.",
+        substitutes: "Home gardening kits. Traditional frozen organic produce. Farmers markets.",
+        suppliers: "Dependency on specific nutrient solution providers. Reliance on local energy grid (high electricity usage). Seed suppliers.",
+        stakeholders: "Local city council (zoning). Environmental advocacy groups. Investors seeking ESG targets."
+    },
+    macroEconomicForces: {
+        globalConditions: "Supply chain disruptions affecting fertilizer availability. Climate change causing volatility in traditional agriculture pricing.",
+        capitalMarkets: "High interest from venture capital in ClimateTech and AgTech. Interest rates rising making hardware financing expensive.",
+        infrastructure: "Availability of retrofittable warehouse space in city centers. Reliable fiber internet for IoT systems.",
+        resources: "Water scarcity increasing value of water-efficient hydroponics. Rising energy costs posing a threat to operational opex."
+    }
+};
+
+const EXAMPLE_INSIGHTS: AIInsight = {
+    opportunities: [
+        "Capitalize on 'hyper-local' trends by partnering with high-end restaurants for exclusive 'harvest-to-plate' marketing.",
+        "Leverage carbon tax credits to subsidize initial hardware costs.",
+        "Develop proprietary AI crop cycle management as a licensable SaaS product for other growers."
+    ],
+    threats: [
+        "Energy price spikes could erode margins significantly compared to traditional farming.",
+        "Market saturation from new container farming franchises lowering entry barriers.",
+        "Consumer skepticism regarding the nutrient profile of hydroponic produce."
+    ],
+    strategicAdvice: "VerdeGrow should focus aggressively on the B2B high-end restaurant segment to secure high-margin, consistent contracts. Invest in solar offsets to mitigate energy risks and lean into the 'zero-carbon' branding which traditional farms cannot claim. Avoid the mass market B2C race until scale reduces unit economics.",
+    dataQualityScore: 95,
+    dataQualityFeedback: "Excellent depth of analysis. You have identified specific, actionable trends and forces across all quadrants. The connection between regulatory incentives and technology trends is particularly strong."
 };
 
 const FORCES_CONFIG: ForceData[] = [
@@ -216,6 +266,7 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
 
+  // Refined prompt to handle edge cases where data is sparse
   const prompt = `
     Analyze the following Business Model Environment data based on Osterwalder's framework.
     
@@ -223,10 +274,16 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
     ${JSON.stringify(data, null, 2)}
 
     Tasks:
-    1. Analyze the input data to identify Opportunities and Threats.
+    1. Analyze the input data to identify Opportunities and Threats. 
+       - If data is sparse, infer general risks associated with the industry described in the 'description' (Project Context).
     2. Provide Strategic Advice.
+       - IMPORTANT: If the input data is insufficient or poor quality, your advice MUST be coaching advice on what specific data is missing and why it is critical to find it. Do not return an empty string.
     3. Grade the user's data input quality from 0 to 100.
-       - Logic: 0 = No data. 100 = Excellent depth, with at least ~6 relevant, specific data points/insights provided per category (Key Trends, Market Forces, Industry Forces, Macro-Economic Forces).
+       - Logic: 
+         - 90-100: Excellent depth. Specific, relevant data in all 4 quadrants.
+         - 70-89: Good. Most quadrants filled with relevant data.
+         - 50-69: Average. Some generic data, or one quadrant missing.
+         - 0-49: Poor. Sparse, irrelevant, or extremely generic data.
        - Evaluate RELEVANCE to the 'description' (Project Context). Irrelevant data should not count towards the score.
     
     Output JSON format:
@@ -253,7 +310,8 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
                 strategicAdvice: { type: Type.STRING },
                 dataQualityScore: { type: Type.INTEGER },
                 dataQualityFeedback: { type: Type.STRING }
-            }
+            },
+            required: ["opportunities", "threats", "strategicAdvice", "dataQualityScore", "dataQualityFeedback"]
         }
       }
     });
@@ -312,7 +370,8 @@ const generateComparativeReport = async (analyses: AnalysisState[], apiKey: stri
                                 }
                             }
                         }
-                    }
+                    },
+                    required: ["executiveSummary", "commonPatterns", "outliers", "aggregatedStats"]
                 }
             }
         });
@@ -327,10 +386,28 @@ const generateComparativeReport = async (analyses: AnalysisState[], apiKey: stri
 
 // --- COMPONENTS ---
 
+const Tooltip = ({ content, children, position = 'top', className = '' }: { content: React.ReactNode; children?: React.ReactNode; position?: 'top' | 'bottom' | 'left' | 'right', className?: string }) => {
+  const positionClasses = {
+    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
+    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
+    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
+    right: 'left-full top-1/2 -translate-y-1/2 ml-2'
+  };
+
+  return (
+    <div className={`group relative flex items-center justify-center ${className}`}>
+      {children}
+      <div className={`absolute ${positionClasses[position]} px-3 py-2 bg-gray-900/95 backdrop-blur-sm text-white text-xs font-medium rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-[100] min-w-[150px] max-w-[250px] border border-gray-700/50 text-center`}>
+        {content}
+      </div>
+    </div>
+  );
+};
+
 const ApiKeyModal = ({ 
     isOpen, 
     onClose, 
-    onSave,
+    onSave, 
     onRemove,
     hasKey
 }: { 
@@ -355,7 +432,7 @@ const ApiKeyModal = ({
                     <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
                         <Key size={24} />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Gemini API Key</h2>
+                    <h2 className="text-xl font-bold text-gray-900">Gemini API Configuration</h2>
                 </div>
 
                 <div className="space-y-4">
@@ -551,6 +628,7 @@ const App = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [insights, setInsights] = useState<AIInsight | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   
   // API Key State
   const [apiKey, setApiKey] = useState<string>(() => {
@@ -588,8 +666,33 @@ const App = () => {
       }
   };
 
+  const validateInput = (category: string, id: string, value: string): string | null => {
+      const trimmed = value.trim();
+      if (category === 'meta' && id === 'description') {
+          if (!trimmed) return "Project context is required for AI analysis.";
+          if (trimmed.length < 50) return `Please provide more context (${50 - trimmed.length} chars remaining).`;
+          return null;
+      }
+      // For quadrant inputs
+      if (category !== 'meta') {
+          // It's okay to be empty, but if not empty, must be substantial
+          if (trimmed.length > 0 && trimmed.length < 10) {
+              return "Please provide more detail (min 10 chars).";
+          }
+      }
+      return null;
+  };
+
   const handleInputChange = (category: ForceCategory, field: string, value: string) => {
     setData(prev => ({ ...prev, [category]: { ...prev[category], [field]: value } }));
+    
+    const error = validateInput(category, field, value);
+    setValidationErrors(prev => {
+        const next = { ...prev };
+        if (error) next[`${category}.${field}`] = error;
+        else delete next[`${category}.${field}`];
+        return next;
+    });
   };
 
   const handleAuthorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -597,18 +700,80 @@ const App = () => {
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setData(prev => ({ ...prev, description: e.target.value }));
+      const val = e.target.value;
+      setData(prev => ({ ...prev, description: val }));
+
+      const error = validateInput('meta', 'description', val);
+      setValidationErrors(prev => {
+          const next = { ...prev };
+          if (error) next['meta.description'] = error;
+          else delete next['meta.description'];
+          return next;
+      });
   };
 
   const handleReset = () => {
       if (window.confirm("Are you sure you want to clear all data? This cannot be undone.")) {
           setData(INITIAL_STATE);
           setInsights(null);
+          setValidationErrors({});
           localStorage.removeItem(STORAGE_KEY);
       }
   };
 
+  const handleLoadExample = () => {
+    // Check if current data is effectively empty/default to avoid unnecessary confirmation
+    const isDefault = JSON.stringify(data) === JSON.stringify(INITIAL_STATE);
+    
+    // If it's default, we don't need to confirm. If it's not default, we ask.
+    const shouldLoad = isDefault || window.confirm("This will overwrite your current inputs with the Example Project. Continue?");
+    
+    if (shouldLoad) {
+        // Deep clone to ensure we have a fresh state
+        const newData = JSON.parse(JSON.stringify(EXAMPLE_DATA));
+        setData(newData);
+        setValidationErrors({});
+        
+        // Load pre-canned insights for instant gratification
+        setInsights(EXAMPLE_INSIGHTS);
+        
+        // Switch to Visualize tab so user sees the result immediately
+        setViewMode('visualize');
+    }
+  };
+
   const handleGenerateInsights = async () => {
+    const newErrors: Record<string, string> = {};
+    
+    // Validate Description
+    const descError = validateInput('meta', 'description', data.description);
+    if (descError) newErrors['meta.description'] = descError;
+
+    // Validate all active fields and count minimal required data
+    let totalDataPoints = 0;
+    
+    FORCES_CONFIG.forEach(force => {
+        force.subSections.forEach(sub => {
+            // @ts-ignore
+            const val = data[force.id][sub.id];
+            if (val && val.trim().length >= 10) totalDataPoints++;
+            
+            const err = validateInput(force.id, sub.id, val);
+            if (err) newErrors[`${force.id}.${sub.id}`] = err;
+        });
+    });
+
+    if (Object.keys(newErrors).length > 0) {
+        setValidationErrors(newErrors);
+        alert("Please fix the validation errors before generating insights.");
+        return;
+    }
+
+    if (totalDataPoints < 3) {
+        alert("Please fill in at least 3 analysis fields with sufficient detail (10+ characters) to generate meaningful insights.");
+        return;
+    }
+
     if (!apiKey) {
         setShowApiKeyModal(true);
         return;
@@ -655,6 +820,7 @@ const App = () => {
               if (parsed.keyTrends && parsed.marketForces && parsed.industryForces && parsed.macroEconomicForces) {
                    if(window.confirm("This will overwrite your current work. Continue?")) {
                        setData(parsed);
+                       setValidationErrors({});
                    }
               } else {
                   alert("Invalid project file format.");
@@ -683,36 +849,49 @@ const App = () => {
             creator: 'EnvioScan App' 
         });
 
-        // --- Page 1: Canvas Image ---
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const imgProps = pdf.getImageProperties(imgData);
-        
-        // Calculate fit dimensions to maintain aspect ratio within page
-        const imgRatio = imgProps.width / imgProps.height;
-        let finalImgWidth = pageWidth;
-        let finalImgHeight = pageWidth / imgRatio;
+        const margin = 20;
+        const contentWidth = pageWidth - (margin * 2);
 
-        if (finalImgHeight > pageHeight) {
-            finalImgHeight = pageHeight;
-            finalImgWidth = pageHeight * imgRatio;
+        // Helper: Add Page Number
+        const addFooter = (pageNum: number) => {
+            pdf.setFontSize(8);
+            pdf.setTextColor(150, 150, 150);
+            pdf.text(`Page ${pageNum} | EnvioScan Analysis | ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
+        };
+
+        // --- Page 1: Canvas Image ---
+        const imgProps = pdf.getImageProperties(imgData);
+        // Calculate fit dimensions to maintain aspect ratio within page (minus margin for title/footer)
+        const imgRatio = imgProps.width / imgProps.height;
+        const availHeight = pageHeight - (margin * 2); 
+        
+        let finalImgWidth = pageWidth - (margin * 2);
+        let finalImgHeight = finalImgWidth / imgRatio;
+
+        if (finalImgHeight > availHeight) {
+            finalImgHeight = availHeight;
+            finalImgWidth = availHeight * imgRatio;
         }
 
         // Center image
         const xOffset = (pageWidth - finalImgWidth) / 2;
         const yOffset = (pageHeight - finalImgHeight) / 2;
         pdf.addImage(imgData, 'PNG', xOffset, yOffset, finalImgWidth, finalImgHeight);
+        addFooter(1);
 
         // --- Page 2: Detailed Inputs Report ---
         pdf.addPage();
-        const margin = 20;
         let yCursor = margin;
-        const contentWidth = pageWidth - (margin * 2);
+        let pageCount = 2;
 
         // Helper to check for page breaks
         const ensureSpace = (heightNeeded: number) => {
-            if (yCursor + heightNeeded > pageHeight - margin) {
+            if (yCursor + heightNeeded > pageHeight - margin - 10) { // -10 buffer for footer
+                addFooter(pageCount);
                 pdf.addPage();
+                pageCount++;
                 yCursor = margin;
                 return true; 
             }
@@ -722,17 +901,20 @@ const App = () => {
         // Title for Data Section
         pdf.setFontSize(20);
         pdf.setTextColor(31, 41, 55); // gray-800
+        pdf.setFont("helvetica", "bold");
         pdf.text("Detailed Environment Data", margin, yCursor);
         yCursor += 15;
 
         if (data.description) {
-            ensureSpace(20);
+            ensureSpace(30); // Check enough space for header + some text
             pdf.setFontSize(14);
             pdf.setTextColor(75, 85, 99); // gray-600
+            pdf.setFont("helvetica", "bold");
             pdf.text("Project Context", margin, yCursor);
             yCursor += 8;
             
             pdf.setFontSize(11);
+            pdf.setFont("helvetica", "normal");
             pdf.setTextColor(55, 65, 81); // gray-700
             const lines = pdf.splitTextToSize(data.description, contentWidth);
             
@@ -748,9 +930,9 @@ const App = () => {
         }
 
         FORCES_CONFIG.forEach(force => {
-            ensureSpace(25);
+            ensureSpace(20); // Header space
             
-            // Header with color
+            // Force Header
             const color = hexToRgb(force.color);
             pdf.setTextColor(color.r, color.g, color.b);
             pdf.setFontSize(14);
@@ -764,7 +946,15 @@ const App = () => {
                 const value = data[force.id][sub.id];
                 if(!value) return; 
                 
-                ensureSpace(20);
+                // Ensure header doesn't get orphaned
+                if (ensureSpace(30)) {
+                    // if page break, reprint section header for clarity (optional, but good practice)
+                    // pdf.setTextColor(color.r, color.g, color.b);
+                    // pdf.setFontSize(14);
+                    // pdf.setFont("helvetica", "bold");
+                    // pdf.text(`${force.title.toUpperCase()} (Cont.)`, margin, yCursor);
+                    // yCursor += 8;
+                }
                 
                 pdf.setFontSize(10);
                 pdf.setTextColor(107, 114, 128); // gray-500
@@ -789,25 +979,32 @@ const App = () => {
                 yCursor += 6; 
             });
             
-            yCursor += 8; 
+            yCursor += 5; 
         });
 
 
         // --- Page 3+: AI Insights Report ---
         if (insights) {
-            pdf.addPage();
-            yCursor = margin;
+            ensureSpace(50); // Try to start on same page if lots of room, else break
+            if (yCursor > margin + 20) {
+                 // Add separator line if continuing on same page
+                 pdf.setDrawColor(200, 200, 200);
+                 pdf.line(margin, yCursor, pageWidth - margin, yCursor);
+                 yCursor += 15;
+            }
 
             // Title
             pdf.setFontSize(22);
             pdf.setTextColor(17, 24, 39); // Gray 900
+            pdf.setFont("helvetica", "bold");
             pdf.text("AI Strategic Analysis", margin, yCursor);
             yCursor += 15;
 
             // Author Info
-            pdf.setFontSize(10);
-            pdf.setTextColor(107, 114, 128); // Gray 500
             if (data.author) {
+                pdf.setFontSize(10);
+                pdf.setTextColor(107, 114, 128); // Gray 500
+                pdf.setFont("helvetica", "normal");
                 pdf.text(`Prepared by: ${data.author}`, margin, yCursor);
                 yCursor += 10;
             } 
@@ -828,17 +1025,19 @@ const App = () => {
             // Box Content
             pdf.setFontSize(12);
             pdf.setTextColor(31, 41, 55); // gray-800
+            pdf.setFont("helvetica", "bold");
             pdf.text(`Data Quality Score: ${insights.dataQualityScore}/100`, margin + 5, yCursor + 8);
             
             pdf.setFontSize(10);
             pdf.setTextColor(75, 85, 99); // gray-600
+            pdf.setFont("helvetica", "normal");
             pdf.text(feedbackLines, margin + 5, yCursor + 16);
             
             yCursor += boxHeight + 15;
 
             // Helper to render sections (Opportunities, Threats)
             const renderSection = (title: string, items: string[], colorHex: string) => {
-                ensureSpace(15);
+                ensureSpace(20);
                 pdf.setFontSize(16);
                 const rgb = hexToRgb(colorHex);
                 pdf.setTextColor(rgb.r, rgb.g, rgb.b);
@@ -873,7 +1072,7 @@ const App = () => {
             renderSection("Threats", insights.threats, "#dc2626"); // red-600
 
             // Strategic Advice
-            ensureSpace(15);
+            ensureSpace(20);
             pdf.setFontSize(16);
             pdf.setTextColor(37, 99, 235); // blue-600
             pdf.setFont("helvetica", "bold");
@@ -895,6 +1094,9 @@ const App = () => {
             });
         }
         
+        // Add footer to last page
+        addFooter(pageCount);
+
         pdf.save('environment-analysis.pdf');
 
         // Export JSON alongside PDF
@@ -1036,18 +1238,26 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button 
-                onClick={() => setShowApiKeyModal(true)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all border ${apiKey ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 animate-pulse'}`}
-            >
-                <Key size={14} />
-                {apiKey ? 'API Key Set' : 'Set API Key'}
-            </button>
+            <Tooltip content={apiKey ? "Update your API Key" : "Required for AI Insights"} position="bottom">
+                <button 
+                    onClick={() => setShowApiKeyModal(true)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all border ${apiKey ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 animate-pulse'}`}
+                >
+                    <Key size={14} />
+                    {apiKey ? 'API Key Set' : 'Set API Key'}
+                </button>
+            </Tooltip>
             <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
             <div className="flex items-center bg-gray-100 p-1 rounded-lg">
-                <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'edit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <Edit3 size={16} /> Input </button>
-                <button onClick={() => setViewMode('visualize')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'visualize' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <FileText size={16} /> Visualize </button>
-                <button onClick={() => setViewMode('compare')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'compare' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <BarChart3 size={16} /> Compare </button>
+                <Tooltip content="Edit analysis data" position="bottom">
+                    <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'edit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <Edit3 size={16} /> Input </button>
+                </Tooltip>
+                <Tooltip content="View diagram & insights" position="bottom">
+                    <button onClick={() => setViewMode('visualize')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'visualize' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <FileText size={16} /> Visualize </button>
+                </Tooltip>
+                <Tooltip content="Compare multiple reports" position="bottom">
+                    <button onClick={() => setViewMode('compare')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'compare' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}> <BarChart3 size={16} /> Compare </button>
+                </Tooltip>
             </div>
           </div>
         </div>
@@ -1121,22 +1331,26 @@ const App = () => {
                                 
                                 <div className="flex items-center justify-between gap-4 pt-2">
                                     {uploadedAnalyses.length > 0 && (
-                                         <button 
-                                            onClick={() => {
-                                                if(window.confirm('Remove all uploaded reports?')) {
-                                                    setUploadedAnalyses([]);
-                                                    setSearchTerm('');
-                                                }
-                                            }}
-                                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors"
-                                         >
-                                            Clear All
-                                         </button>
+                                        <Tooltip content="Clear all loaded reports" position="top">
+                                            <button 
+                                                onClick={() => {
+                                                    if(window.confirm('Remove all uploaded reports?')) {
+                                                        setUploadedAnalyses([]);
+                                                        setSearchTerm('');
+                                                    }
+                                                }}
+                                                className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors"
+                                            >
+                                                Clear All
+                                            </button>
+                                         </Tooltip>
                                     )}
-                                    <button onClick={runComparison} disabled={isComparing || filteredAnalyses.length === 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg font-medium shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                                        {isComparing ? <Loader2 className="animate-spin" size={20} /> : <BarChart3 size={20} />} 
-                                        {isComparing ? 'Analyzing Patterns...' : `Compare ${filteredAnalyses.length} Report${filteredAnalyses.length !== 1 ? 's' : ''}`}
-                                    </button>
+                                    <Tooltip content="Analyze patterns across reports with AI" position="top" className="flex-1">
+                                        <button onClick={runComparison} disabled={isComparing || filteredAnalyses.length === 0} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg font-medium shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {isComparing ? <Loader2 className="animate-spin" size={20} /> : <BarChart3 size={20} />} 
+                                            {isComparing ? 'Analyzing Patterns...' : `Compare ${filteredAnalyses.length} Report${filteredAnalyses.length !== 1 ? 's' : ''}`}
+                                        </button>
+                                    </Tooltip>
                                 </div>
                             </div>
                         )}
@@ -1177,19 +1391,42 @@ const App = () => {
                 <div className="lg:col-span-1 space-y-2">
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4 space-y-4">
                         <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Author</label>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Author</label>
+                                <Tooltip content="The name that will appear on the final report" position="left">
+                                    <HelpCircle size={12} className="text-gray-400 cursor-help" />
+                                </Tooltip>
+                            </div>
                             <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
                                 <User size={16} className="text-gray-400" />
                                 <input type="text" value={data.author} onChange={handleAuthorChange} placeholder="Your Name" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
                             </div>
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Project Context</label>
-                            <div className="flex items-start gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
-                                <AlignLeft size={16} className="text-gray-400 mt-1" />
-                                <textarea value={data.description} onChange={handleDescriptionChange} placeholder="Briefly describe the business context..." rows={3} className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400 resize-none" />
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Project Context</label>
+                                <Tooltip content="Provide context to help AI generate relevant strategic advice" position="left">
+                                    <HelpCircle size={12} className="text-gray-400 cursor-help" />
+                                </Tooltip>
+                            </div>
+                            <div className={`flex flex-col gap-1 bg-gray-50 rounded-lg px-3 py-2 border transition-all ${validationErrors['meta.description'] ? 'border-red-300 bg-red-50 focus-within:ring-2 focus-within:ring-red-100' : 'border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400'}`}>
+                                <div className="flex items-start gap-2">
+                                    <AlignLeft size={16} className="text-gray-400 mt-1" />
+                                    <textarea value={data.description} onChange={handleDescriptionChange} placeholder="Briefly describe the business context..." rows={3} className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400 resize-none" />
+                                </div>
+                                {validationErrors['meta.description'] && (
+                                    <div className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1">
+                                        <AlertCircle size={10} />
+                                        {validationErrors['meta.description']}
+                                    </div>
+                                )}
                             </div>
                         </div>
+                        <Tooltip content="Populate with sample data to demonstrate functionality" position="top" className="w-full">
+                            <button onClick={handleLoadExample} className="w-full text-xs flex items-center justify-center gap-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-2 rounded-lg font-medium transition-colors">
+                                <BookOpen size={14} /> Load Example Project
+                            </button>
+                        </Tooltip>
                     </div>
                     <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Analysis Quadrants</h2>
                     {FORCES_CONFIG.map((force) => (
@@ -1198,14 +1435,22 @@ const App = () => {
                         </button>
                     ))}
                     <div className="pt-8 space-y-4">
-                        <button onClick={handleGenerateInsights} disabled={isGenerating} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-70 disabled:cursor-not-allowed">
-                            {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />} {isGenerating ? 'Analyzing...' : 'Generate Insights'}
-                        </button>
+                        <Tooltip content="Sends data to Gemini AI to identify opportunities & threats" position="top" className="w-full">
+                            <button onClick={handleGenerateInsights} disabled={isGenerating} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-70 disabled:cursor-not-allowed">
+                                {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />} {isGenerating ? 'Analyzing...' : 'Generate Insights'}
+                            </button>
+                        </Tooltip>
                          <div className="grid grid-cols-2 gap-3">
-                            <button onClick={handleSaveProgress} className="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 p-2.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:text-indigo-600 transition-all text-sm font-medium" title="Download JSON backup"> <Save size={16} /> Save JSON </button>
-                            <label className="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 p-2.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:text-indigo-600 transition-all text-sm font-medium cursor-pointer"> <Upload size={16} /> Load JSON <input type="file" accept=".json" className="hidden" onChange={handleLoadProgress} /> </label>
+                            <Tooltip content="Download a local backup of your current progress" position="top" className="w-full">
+                                <button onClick={handleSaveProgress} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 p-2.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:text-indigo-600 transition-all text-sm font-medium" title="Download JSON backup"> <Save size={16} /> Save JSON </button>
+                            </Tooltip>
+                            <Tooltip content="Restore a previously saved analysis" position="top" className="w-full">
+                                <label className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 p-2.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:text-indigo-600 transition-all text-sm font-medium cursor-pointer"> <Upload size={16} /> Load JSON <input type="file" accept=".json" className="hidden" onChange={handleLoadProgress} /> </label>
+                            </Tooltip>
                         </div>
-                        <button onClick={handleReset} className="w-full flex items-center justify-center gap-2 text-gray-500 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all text-sm"> <Trash2 size={14} /> Reset Data </button>
+                        <Tooltip content="Clears all inputs to start fresh" position="top" className="w-full">
+                            <button onClick={handleReset} className="w-full flex items-center justify-center gap-2 text-gray-500 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all text-sm"> <Trash2 size={14} /> Reset Data </button>
+                        </Tooltip>
                         <p className="text-xs text-center text-gray-400">Made by Arturo Zamora</p>
                     </div>
                 </div>
@@ -1223,7 +1468,21 @@ const App = () => {
                                                 <div className="absolute bottom-full right-0 mb-2 w-64 bg-gray-900 text-white text-xs p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"> {section.description} </div>
                                             </div>
                                         </div>
-                                        <textarea value={data[activeTab][section.id]} onChange={(e) => handleInputChange(activeTab, section.id, e.target.value)} placeholder={section.placeholder} rows={4} className="w-full p-3 rounded-lg bg-gray-50 border border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all text-sm resize-none" />
+                                        <div className="relative">
+                                            <textarea 
+                                                value={data[activeTab][section.id]} 
+                                                onChange={(e) => handleInputChange(activeTab, section.id, e.target.value)} 
+                                                placeholder={section.placeholder} 
+                                                rows={4} 
+                                                className={`w-full p-3 rounded-lg border transition-all text-sm resize-none ${validationErrors[`${activeTab}.${section.id}`] ? 'bg-red-50 border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'bg-gray-50 border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'}`} 
+                                            />
+                                            {validationErrors[`${activeTab}.${section.id}`] && (
+                                                <div className="absolute top-full left-0 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
+                                                    <AlertCircle size={10} />
+                                                    {validationErrors[`${activeTab}.${section.id}`]}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                              </div>
@@ -1234,7 +1493,9 @@ const App = () => {
         ) : (
             <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                 <div className="flex justify-end gap-4">
-                    <button onClick={handleExportPDF} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm"> <Download size={18} /> Export PDF </button>
+                    <Tooltip content="Generate a professional PDF report with diagram & detailed data" position="left">
+                        <button onClick={handleExportPDF} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm"> <Download size={18} /> Export PDF </button>
+                    </Tooltip>
                 </div>
                 {insights && (
                     <div className="bg-gradient-to-br from-white to-indigo-50/50 rounded-2xl border border-indigo-100 p-6 shadow-sm relative overflow-hidden">
@@ -1249,7 +1510,21 @@ const App = () => {
                                         </svg>
                                         <span className="absolute text-xs font-bold">{insights.dataQualityScore}</span>
                                     </div>
-                                    <div> <div className="text-xs font-bold uppercase tracking-wide opacity-80">Data Quality</div> <div className="text-sm font-semibold">{getScoreLabel(insights.dataQualityScore)}</div> </div>
+                                    <div> 
+                                        <div className="flex items-center gap-1">
+                                            <div className="text-xs font-bold uppercase tracking-wide opacity-80">Data Quality</div> 
+                                            <Tooltip content={<div className="text-left space-y-1">
+                                                <div className="font-bold border-b border-gray-600 pb-1 mb-1">Grading Criteria</div>
+                                                <div><span className="text-green-400 font-bold">90-100:</span> Excellent depth (6+ points/category)</div>
+                                                <div><span className="text-blue-400 font-bold">70-89:</span> Good coverage</div>
+                                                <div><span className="text-yellow-400 font-bold">50-69:</span> Average / Missing sections</div>
+                                                <div><span className="text-red-400 font-bold">0-49:</span> Poor / Sparse data</div>
+                                            </div>} position="bottom">
+                                                <Info size={12} className="text-gray-400 cursor-help" />
+                                            </Tooltip>
+                                        </div>
+                                        <div className="text-sm font-semibold">{getScoreLabel(insights.dataQualityScore)}</div> 
+                                    </div>
                                 </div>
                             </div>
                         </div>
