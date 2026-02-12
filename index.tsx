@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
     LayoutDashboard, 
@@ -37,7 +37,14 @@ import {
     Users,
     FlaskConical,
     Microscope,
-    School
+    School,
+    Lightbulb,
+    Trophy,
+    Star,
+    Crown,
+    Sword,
+    Scroll,
+    Map
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -324,6 +331,23 @@ const FORCES_CONFIG: ForceData[] = [
   },
 ];
 
+// --- GAMIFICATION CONSTANTS ---
+const GAME_LEVELS = [
+    { name: 'Novice Observer', minXP: 0, color: 'text-gray-600', icon: User },
+    { name: 'Data Explorer', minXP: 20, color: 'text-blue-600', icon: Search },
+    { name: 'Pattern Seeker', minXP: 45, color: 'text-purple-600', icon: Microscope },
+    { name: 'Strategy Architect', minXP: 70, color: 'text-orange-600', icon: Building2 },
+    { name: 'Grandmaster', minXP: 90, color: 'text-yellow-600', icon: Crown }
+];
+
+const BADGES = [
+    { id: 'trends', name: 'Trend Spotter', icon: TrendingUp, description: 'Identify all key trends', criteria: (d: AnalysisState) => Object.values(d.keyTrends).every(v => v.length > 20) },
+    { id: 'market', name: 'Market Maven', icon: Target, description: 'Define all market forces', criteria: (d: AnalysisState) => Object.values(d.marketForces).every(v => v.length > 20) },
+    { id: 'industry', name: 'Industry Insider', icon: Factory, description: 'Analyze all industry forces', criteria: (d: AnalysisState) => Object.values(d.industryForces).every(v => v.length > 20) },
+    { id: 'macro', name: 'Macro Master', icon: Globe, description: 'Map all macro forces', criteria: (d: AnalysisState) => Object.values(d.macroEconomicForces).every(v => v.length > 20) },
+    { id: 'story', name: 'Visionary', icon: Lightbulb, description: 'Write a detailed project context (>150 chars)', criteria: (d: AnalysisState) => d.description.length > 150 }
+];
+
 // --- SERVICES ---
 
 const parseJSON = (text: string) => {
@@ -358,7 +382,7 @@ const hexToRgb = (hex: string) => {
     } : { r: 0, g: 0, b: 0 };
 };
 
-const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AIInsight | null> => {
+const generateInsights = async (data: AnalysisState, apiKey: string, isAcademicMode: boolean): Promise<AIInsight | null> => {
   if (!apiKey) {
     console.warn("API Key missing");
     return null;
@@ -366,32 +390,45 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
 
-  // Refined prompt to handle edge cases where data is sparse
+  // Custom prompt construction based on mode
+  let roleInstruction = "";
+  
+  if (isAcademicMode) {
+      roleInstruction = `
+      ROLE: Gamified Strategy Tutor & Quest Giver.
+      GOAL: Guide the student through the 'Game of Business Strategy'. DO NOT give them the answers. Give them feedback to level up their analysis.
+      
+      TONE: Encouraging, Challenging, Gamified (use terms like 'XP', 'Quest', 'Boss Fight').
+
+      SPECIFIC INSTRUCTIONS FOR JSON OUTPUT MAPPING:
+      1. "opportunities": List 3 specific strengths in their input. Label these as "XP GAINS". (e.g., "XP GAIN: Excellent identification of regulatory headwinds.")
+      2. "threats": List 3 specific missing data points or weak assumptions. Label these as "ACTIVE QUESTS". (e.g., "QUEST: Investigate the specific switching costs for your customer segment.")
+      3. "strategicAdvice": Provide ONE major complex question that connects two quadrants. Label this as "BOSS FIGHT". (e.g., "BOSS FIGHT: How does your Technology Trend of AI specifically mitigate the Industry Force of Supplier Power?")
+      4. "prototypingExperiments": Return an empty array [].
+      5. "dataQualityScore": Grade strictly on research depth (0-100).
+      `;
+  } else {
+      roleInstruction = `
+      ROLE: Senior Strategy Consultant.
+      GOAL: Provide executive-level strategic foresight and risk mitigation strategies.
+      TONE: Professional, concise, action-oriented.
+      
+      SPECIFIC INSTRUCTIONS:
+      1. Analyze Opportunities and Threats: Focus on macro-economic risks and strategic positioning.
+      2. Strategic Advice: Focus on execution, scalability, and competitive advantage.
+      3. Prototyping Experiments: Suggest 3 specific experiments (Hypothesis/Method/Metric) to validate business assumptions.
+      4. Grading: Assess the completeness of the data for strategic decision making.
+      `;
+  }
+
   const prompt = `
+    ${roleInstruction}
+    
     Analyze the following Business Model Environment data based on Osterwalder's framework.
     
     Data:
     ${JSON.stringify(data, null, 2)}
 
-    Tasks:
-    1. Analyze the input data to identify Opportunities and Threats. 
-       - If data is sparse, infer general risks associated with the industry described in the 'description' (Project Context).
-    2. Provide Strategic Advice.
-       - IMPORTANT: If the input data is insufficient or poor quality, your advice MUST be coaching advice on what specific data is missing and why it is critical to find it. Do not return an empty string.
-    3. Generate 3 Specific Prototyping Experiments (Hypothesis Testing).
-       - Based on the opportunities and threats, suggest 3 experiments the user can run to validate their business model.
-       - Each experiment must have:
-         - Hypothesis: What do we believe to be true?
-         - Method: How will we test it? (e.g., Landing Page Smoke Test, Concierge MVP, Interview)
-         - Metric: What determines success? (e.g., Conversion rate > 5%)
-    4. Grade the user's data input quality from 0 to 100.
-       - Logic: 
-         - 90-100: Excellent depth. Specific, relevant data in all 4 quadrants.
-         - 70-89: Good. Most quadrants filled with relevant data.
-         - 50-69: Average. Some generic data, or one quadrant missing.
-         - 0-49: Poor. Sparse, irrelevant, or extremely generic data.
-       - Evaluate RELEVANCE to the 'description' (Project Context). Irrelevant data should not count towards the score.
-    
     Output JSON format:
     {
       "opportunities": ["string", "string", ...],
@@ -402,7 +439,7 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
          ...
       ],
       "dataQualityScore": number (0-100),
-      "dataQualityFeedback": "string (brief explanation of the score and tips to improve)"
+      "dataQualityFeedback": "string"
     }
   `;
 
@@ -774,7 +811,8 @@ const App = () => {
   const [insights, setInsights] = useState<AIInsight | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  
+  const [isAcademicMode, setIsAcademicMode] = useState(false); // New Mode State
+
   // API Key State
   const [apiKey, setApiKey] = useState<string>(() => {
       // Check localStorage or fallback to empty (secure default)
@@ -797,6 +835,47 @@ const App = () => {
       }
   }, [data]);
 
+  // --- GAMIFICATION LOGIC ---
+  const gamificationStats = useMemo(() => {
+    let filledFields = 0;
+    let totalFields = 0;
+    
+    FORCES_CONFIG.forEach(force => {
+        force.subSections.forEach(sub => {
+            totalFields++;
+            // @ts-ignore
+            const val = data[force.id][sub.id];
+            if (val && val.length >= 10) {
+                filledFields++;
+            }
+        });
+    });
+
+    // Calculate percentage of fields filled (max 90 points from fields, 10 from description)
+    const fieldsPercentage = (filledFields / totalFields) * 90;
+    const descriptionScore = Math.min(10, data.description.length > 50 ? 10 : (data.description.length / 5)); 
+    
+    const xp = Math.floor(fieldsPercentage + descriptionScore);
+
+    const currentLevel = GAME_LEVELS.slice().reverse().find(lvl => xp >= lvl.minXP) || GAME_LEVELS[0];
+    const nextLevel = GAME_LEVELS.find(lvl => lvl.minXP > xp);
+    
+    // Progress to next level
+    let progressPercent = 100;
+    if (nextLevel) {
+        const prevLevelXP = GAME_LEVELS[GAME_LEVELS.indexOf(nextLevel) - 1]?.minXP || 0;
+        const range = nextLevel.minXP - prevLevelXP;
+        const currentInLevel = xp - prevLevelXP;
+        progressPercent = Math.min(100, Math.max(0, (currentInLevel / range) * 100));
+    } else {
+        progressPercent = 100;
+    }
+
+    const earnedBadges = BADGES.filter(b => b.criteria(data));
+
+    return { xp, level: currentLevel, nextLevel, progressPercent, earnedBadges };
+  }, [data]);
+
   const handleSaveApiKey = (key: string) => {
       setApiKey(key);
       localStorage.setItem(API_KEY_STORAGE, key);
@@ -814,7 +893,7 @@ const App = () => {
   const validateInput = (category: string, id: string, value: string): string | null => {
       const trimmed = value.trim();
       if (category === 'meta' && id === 'description') {
-          if (!trimmed) return "Project context is required for analysis.";
+          if (!trimmed) return "Project context is required.";
           if (trimmed.length < 20) return "Too short. Please add more details.";
           if (trimmed.length < 50) return `Keep going... (${50 - trimmed.length} more chars recommended).`;
           return null;
@@ -823,7 +902,7 @@ const App = () => {
       if (category !== 'meta') {
           // It's okay to be empty, but if not empty, must be substantial
           if (trimmed.length > 0 && trimmed.length < 10) {
-              return "Too brief. Please elaborate slightly (min 10 chars).";
+              return "Too brief (min 10 chars).";
           }
       }
       return null;
@@ -944,7 +1023,7 @@ const App = () => {
 
     setIsGenerating(true);
     try {
-        const result = await generateInsights(data, apiKey);
+        const result = await generateInsights(data, apiKey, isAcademicMode);
         if (result) {
             setInsights(result);
             setViewMode('visualize');
@@ -1074,8 +1153,8 @@ const App = () => {
              pdf.setTextColor(100, 100, 100);
              pdf.setFont("helvetica", "normal");
              let metaText = "";
-             if (data.author) metaText += `Student/Author: ${data.author}   `;
-             if (data.courseId) metaText += `Course ID: ${data.courseId}`;
+             if (data.author) metaText += `${isAcademicMode ? 'Student' : 'Author'}: ${data.author}   `;
+             if (data.courseId && isAcademicMode) metaText += `Course ID: ${data.courseId}`;
              pdf.text(metaText, margin, yCursor);
              yCursor += 10;
         }
@@ -1085,7 +1164,7 @@ const App = () => {
             pdf.setFontSize(14);
             pdf.setTextColor(75, 85, 99); // gray-600
             pdf.setFont("helvetica", "bold");
-            pdf.text("Project Context", margin, yCursor);
+            pdf.text(isAcademicMode ? "Project Context" : "Executive Summary", margin, yCursor);
             yCursor += 8;
             
             pdf.setFontSize(11);
@@ -1172,7 +1251,7 @@ const App = () => {
             pdf.setFontSize(22);
             pdf.setTextColor(17, 24, 39); // Gray 900
             pdf.setFont("helvetica", "bold");
-            pdf.text("AI Strategic Analysis", margin, yCursor);
+            pdf.text(isAcademicMode ? "Academic Assessment" : "Strategic Analysis", margin, yCursor);
             yCursor += 15;
 
             // Author Info
@@ -1267,38 +1346,6 @@ const App = () => {
                 pdf.text(line, margin, yCursor);
                 yCursor += 6;
             });
-
-            // Experiments Section (New)
-            if (insights.prototypingExperiments && insights.prototypingExperiments.length > 0) {
-                ensureSpace(40);
-                pdf.setFontSize(16);
-                pdf.setTextColor(147, 51, 234); // purple-600
-                pdf.setFont("helvetica", "bold");
-                pdf.text("Recommended Prototyping Experiments", margin, yCursor);
-                yCursor += 10;
-
-                insights.prototypingExperiments.forEach((exp, i) => {
-                    const boxHeightExp = 35; // approx
-                    ensureSpace(boxHeightExp + 5);
-                    
-                    pdf.setDrawColor(233, 213, 255); // purple-200
-                    pdf.setFillColor(250, 245, 255); // purple-50
-                    pdf.roundedRect(margin, yCursor, contentWidth, boxHeightExp, 2, 2, 'FD');
-                    
-                    pdf.setFontSize(10);
-                    pdf.setTextColor(107, 33, 168); // purple-800
-                    pdf.setFont("helvetica", "bold");
-                    pdf.text(`Experiment ${i + 1}: ${exp.hypothesis.substring(0, 80)}...`, margin + 4, yCursor + 6);
-                    
-                    pdf.setFontSize(9);
-                    pdf.setTextColor(55, 65, 81);
-                    pdf.setFont("helvetica", "normal");
-                    pdf.text(`Method: ${exp.method}`, margin + 4, yCursor + 14);
-                    pdf.text(`Metric: ${exp.metric}`, margin + 4, yCursor + 22);
-                    
-                    yCursor += boxHeightExp + 5;
-                });
-            }
         }
         
         // Add footer to last page
@@ -1445,6 +1492,24 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Mode Toggle Switch */}
+            <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
+                <button 
+                    onClick={() => setIsAcademicMode(false)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${!isAcademicMode ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                    <Briefcase size={14} />
+                    Business
+                </button>
+                <button 
+                    onClick={() => setIsAcademicMode(true)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${isAcademicMode ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                    <GraduationCap size={14} />
+                    Academic
+                </button>
+            </div>
+
             <Tooltip content={apiKey ? "Update your API Key" : "Required for AI Insights"} position="bottom">
                 <button 
                     onClick={() => setShowApiKeyModal(true)}
@@ -1659,42 +1724,112 @@ const App = () => {
         ) : viewMode === 'edit' ? (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="lg:col-span-1 space-y-2">
+                    {/* GAMIFICATION DASHBOARD */}
+                    {isAcademicMode && (
+                        <div className="bg-white p-4 rounded-xl shadow-md border-2 border-indigo-100 mb-4 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-2 opacity-10 pointer-events-none">
+                                <Trophy size={80} className="text-indigo-900" />
+                            </div>
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="bg-indigo-100 p-1.5 rounded-lg text-indigo-700">
+                                        {React.createElement(gamificationStats.level.icon, { size: 18 })}
+                                    </div>
+                                    <div>
+                                        <h3 className={`text-sm font-bold ${gamificationStats.level.color}`}>{gamificationStats.level.name}</h3>
+                                        <div className="text-xs text-gray-500 font-mono">Level {GAME_LEVELS.indexOf(gamificationStats.level) + 1} Strategist</div>
+                                    </div>
+                                </div>
+                                
+                                <div className="mb-4">
+                                    <div className="flex justify-between text-xs mb-1 font-semibold text-gray-600">
+                                        <span>XP: {gamificationStats.xp}</span>
+                                        <span>Next: {gamificationStats.nextLevel ? gamificationStats.nextLevel.minXP : 'Max'}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden border border-gray-200">
+                                        <div 
+                                            className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out relative" 
+                                            style={{ width: `${gamificationStats.progressPercent}%` }}
+                                        >
+                                            <div className="absolute inset-0 bg-white/30 animate-[shimmer_2s_infinite]"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                        Badges ({gamificationStats.earnedBadges.length}/{BADGES.length})
+                                    </h4>
+                                    <div className="flex gap-1.5 flex-wrap mt-2">
+                                        {gamificationStats.earnedBadges.length > 0 ? gamificationStats.earnedBadges.map(badge => (
+                                            <React.Fragment key={badge.id}>
+                                                <Tooltip content={badge.name} position="top">
+                                                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-50 border border-yellow-200 text-yellow-600 shadow-sm">
+                                                        {React.createElement(badge.icon, { size: 14 })}
+                                                    </div>
+                                                </Tooltip>
+                                            </React.Fragment>
+                                        )) : <span className="text-gray-400 italic text-xs">No badges earned yet. Keep researching!</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4 space-y-4">
                         <div>
-                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Student Information</h3>
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                                {isAcademicMode ? 'Student Information' : 'Analyst Information'}
+                            </h3>
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
                                     <User size={16} className="text-gray-400" />
-                                    <input type="text" value={data.author} onChange={handleAuthorChange} placeholder="Student Name" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
+                                    <input 
+                                        type="text" 
+                                        value={data.author} 
+                                        onChange={handleAuthorChange} 
+                                        placeholder={isAcademicMode ? "Student Name" : "Author Name"} 
+                                        className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" 
+                                    />
                                 </div>
-                                <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
-                                    <School size={16} className="text-gray-400" />
-                                    <input type="text" value={data.courseId} onChange={handleCourseIdChange} placeholder="Course ID (e.g. ENTR-101)" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
-                                </div>
+                                {isAcademicMode && (
+                                    <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
+                                        <School size={16} className="text-gray-400" />
+                                        <input 
+                                            type="text" 
+                                            value={data.courseId} 
+                                            onChange={handleCourseIdChange} 
+                                            placeholder="Course ID (e.g. ENTR-101)" 
+                                            className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" 
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div>
                             <div className="flex items-center justify-between mb-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Project Context</label>
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
+                                    {isAcademicMode ? 'Project Context' : 'Executive Summary'}
+                                </label>
                                 <Tooltip content="Provide context to help AI generate relevant strategic advice" position="left">
                                     <HelpCircle size={12} className="text-gray-400 cursor-help" />
                                 </Tooltip>
                             </div>
                             <div className={`flex flex-col gap-1 bg-gray-50 rounded-lg px-3 py-2 border transition-all ${validationErrors['meta.description'] ? 'border-red-300 bg-red-50 focus-within:ring-2 focus-within:ring-red-100' : 'border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400'}`}>
                                 <div className="flex items-start gap-2">
-                                    <AlignLeft size={16} className="text-gray-400 mt-1" />
-                                    <textarea value={data.description} onChange={handleDescriptionChange} placeholder="Briefly describe the business context..." rows={3} className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400 resize-none" />
+                                    <AlignLeft size={16} className={`mt-1 ${validationErrors['meta.description'] ? 'text-red-400' : 'text-gray-400'}`} />
+                                    <textarea value={data.description} onChange={handleDescriptionChange} placeholder={isAcademicMode ? "Describe the class project or startup idea..." : "Briefly describe the business context..."} rows={3} className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400 resize-none" />
                                 </div>
                                 <div className="flex justify-between items-center mt-1">
                                     <div className="flex-1">
                                         {validationErrors['meta.description'] && (
-                                            <div className="text-xs text-red-500 font-medium flex items-center gap-1">
+                                            <div className="text-xs text-red-600 font-medium flex items-center gap-1 animate-pulse">
                                                 <AlertCircle size={10} />
                                                 {validationErrors['meta.description']}
                                             </div>
                                         )}
                                     </div>
-                                    <div className={`text-[10px] whitespace-nowrap ml-2 ${data.description.length < 50 ? 'text-red-400' : 'text-green-600 font-semibold'}`}>
+                                    <div className={`text-[10px] whitespace-nowrap ml-2 ${data.description.length < 50 ? 'text-red-500 font-bold' : 'text-green-600 font-semibold'}`}>
                                         {data.description.length} / 50 min
                                     </div>
                                 </div>
@@ -1731,9 +1866,10 @@ const App = () => {
                         </button>
                     ))}
                     <div className="pt-8 space-y-4">
-                        <Tooltip content="Sends data to Gemini AI to identify opportunities & threats" position="top" className="w-full">
-                            <button onClick={handleGenerateInsights} disabled={isGenerating} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-70 disabled:cursor-not-allowed">
-                                {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />} {isGenerating ? 'Analyzing...' : 'Generate Insights'}
+                        <Tooltip content={isAcademicMode ? "Ask the tutor for feedback and missions" : "Sends data to Gemini AI to identify opportunities & threats"} position="top" className="w-full">
+                            <button onClick={handleGenerateInsights} disabled={isGenerating} className={`w-full bg-gradient-to-r ${isAcademicMode ? 'from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' : 'from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'} text-white p-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-70 disabled:cursor-not-allowed`}>
+                                {isGenerating ? <Loader2 className="animate-spin" size={20} /> : (isAcademicMode ? <Scroll size={20} /> : <Sparkles size={20} />)} 
+                                {isGenerating ? 'Analyzing...' : (isAcademicMode ? 'Submit to Professor' : 'Generate Insights')}
                             </button>
                         </Tooltip>
                          <div className="grid grid-cols-2 gap-3">
@@ -1770,15 +1906,15 @@ const App = () => {
                                                 onChange={(e) => handleInputChange(activeTab, section.id, e.target.value)} 
                                                 placeholder={section.placeholder} 
                                                 rows={4} 
-                                                className={`w-full p-3 pb-6 rounded-lg border transition-all text-sm resize-none ${validationErrors[`${activeTab}.${section.id}`] ? 'bg-red-50 border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'bg-gray-50 border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'}`} 
+                                                className={`w-full p-3 pb-6 rounded-lg border transition-all text-sm resize-none ${validationErrors[`${activeTab}.${section.id}`] ? 'bg-red-50 border-red-300 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-200 placeholder:text-red-300' : 'bg-gray-50 border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'}`} 
                                             />
-                                            <div className="absolute bottom-2 right-2 text-[10px] pointer-events-none px-1 rounded bg-white/50 text-gray-400 font-mono">
+                                            <div className={`absolute bottom-2 right-2 text-[10px] pointer-events-none px-1 rounded font-mono transition-colors ${validationErrors[`${activeTab}.${section.id}`] ? 'text-red-600 bg-red-100 font-bold' : 'bg-white/50 text-gray-400'}`}>
                                                 {data[activeTab][section.id]?.length || 0} chars
                                             </div>
                                         </div>
                                         {validationErrors[`${activeTab}.${section.id}`] && (
-                                            <div className="text-xs text-red-500 font-medium flex items-center gap-1 animate-in slide-in-from-top-1 fade-in duration-200">
-                                                <AlertCircle size={10} />
+                                            <div className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1 animate-in slide-in-from-top-1 fade-in duration-200">
+                                                <AlertCircle size={12} />
                                                 {validationErrors[`${activeTab}.${section.id}`]}
                                             </div>
                                         )}
@@ -1799,7 +1935,10 @@ const App = () => {
                 {insights && (
                     <div className="bg-gradient-to-br from-white to-indigo-50/50 rounded-2xl border border-indigo-100 p-6 shadow-sm relative overflow-hidden">
                         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 border-b border-indigo-100 pb-6">
-                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"> <Sparkles className="text-indigo-600" size={20} /> Strategic Analysis </h2>
+                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"> 
+                                {isAcademicMode ? <Scroll className="text-indigo-600" size={20} /> : <Sparkles className="text-indigo-600" size={20} />}
+                                {isAcademicMode ? "Tutor Feedback & Quests" : "Strategic Analysis"} 
+                            </h2>
                             <div className={`flex items-center gap-4 px-4 py-2 rounded-xl border ${getScoreColor(insights.dataQualityScore)} transition-colors`}>
                                 <div className="flex items-center gap-3">
                                     <div className="relative w-12 h-12 flex items-center justify-center">
@@ -1811,7 +1950,7 @@ const App = () => {
                                     </div>
                                     <div> 
                                         <div className="flex items-center gap-1">
-                                            <div className="text-xs font-bold uppercase tracking-wide opacity-80">Data Quality</div> 
+                                            <div className="text-xs font-bold uppercase tracking-wide opacity-80">{isAcademicMode ? 'Research Grade' : 'Data Quality'}</div> 
                                             <Tooltip content={<div className="text-left space-y-1">
                                                 <div className="font-bold border-b border-gray-600 pb-1 mb-1">Grading Criteria</div>
                                                 <div><span className="text-green-400 font-bold">90-100:</span> Excellent depth (6+ points/category)</div>
@@ -1829,54 +1968,103 @@ const App = () => {
                         </div>
                          <div className="mb-6 bg-white/60 p-4 rounded-lg border border-indigo-50 text-sm text-indigo-900 flex items-start gap-3"> <Activity size={16} className="mt-0.5 text-indigo-500 flex-shrink-0" /> <p>{insights.dataQualityFeedback}</p> </div>
                         
-                        {/* New Prototyping Lab Section for Academic Use */}
-                        {insights.prototypingExperiments && insights.prototypingExperiments.length > 0 && (
+                        {/* Gamified Feedback System (Replaces Validation Missions in Academic Mode) */}
+                        {isAcademicMode ? (
                             <div className="mb-6">
-                                <h3 className="flex items-center gap-2 text-md font-bold text-purple-900 mb-4">
-                                    <FlaskConical className="text-purple-600" size={20} />
-                                    Prototyping Lab <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-normal">Academic Feature</span>
+                                <h3 className="flex items-center gap-2 text-md font-bold text-indigo-900 mb-4">
+                                    <Trophy className="text-indigo-600" size={20} />
+                                    Gamified Feedback System <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-normal">System Rules</span>
                                 </h3>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {insights.prototypingExperiments.map((exp, idx) => (
-                                        <div key={idx} className="bg-purple-50/50 border border-purple-100 rounded-xl p-5 hover:border-purple-200 transition-colors">
-                                            <div className="flex items-start gap-3">
-                                                <div className="bg-white p-2 rounded-lg text-purple-600 shadow-sm border border-purple-100">
-                                                    <Microscope size={20} />
+                                <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-6 text-sm text-indigo-900 leading-relaxed">
+                                     <p className="mb-4">
+                                        <strong>How to Level Up:</strong> This tool uses a gamified system to track your research depth. 
+                                        You earn <strong>XP (Experience Points)</strong> based on the depth and completeness of your research across all 4 quadrants. 
+                                        Filling out fields with detailed data ( &gt; 10 chars) maximizes your score.
+                                     </p>
+                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                                        <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                             <div className="font-bold text-indigo-700 mb-1 flex items-center gap-2"><Star size={16}/> Your Status</div>
+                                             <div className="flex items-center gap-3 mt-2">
+                                                <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">
+                                                     {React.createElement(gamificationStats.level.icon, { size: 20 })}
                                                 </div>
-                                                <div className="space-y-3 flex-1">
-                                                    <div>
-                                                        <div className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-1">Hypothesis {idx + 1}</div>
-                                                        <p className="text-sm font-semibold text-gray-900">{exp.hypothesis}</p>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        <div className="bg-white/60 p-3 rounded-lg">
-                                                            <div className="text-xs font-bold text-gray-500 mb-1">Test Method</div>
-                                                            <p className="text-sm text-gray-800">{exp.method}</p>
+                                                <div>
+                                                     <div className="font-bold text-gray-900">{gamificationStats.level.name}</div>
+                                                     <div className="text-xs text-gray-500">XP: {gamificationStats.xp} / 100</div>
+                                                </div>
+                                             </div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                             <div className="font-bold text-indigo-700 mb-1 flex items-center gap-2"><Crown size={16}/> Earned Badges</div>
+                                             <div className="flex gap-1.5 flex-wrap mt-2">
+                                                {gamificationStats.earnedBadges.length > 0 ? gamificationStats.earnedBadges.map(badge => (
+                                                    <Tooltip key={badge.id} content={badge.name} position="top">
+                                                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-50 border border-yellow-200 text-yellow-600 shadow-sm">
+                                                            {React.createElement(badge.icon, { size: 14 })}
                                                         </div>
-                                                        <div className="bg-white/60 p-3 rounded-lg">
-                                                            <div className="text-xs font-bold text-gray-500 mb-1">Success Metric</div>
-                                                            <p className="text-sm text-gray-800 font-mono text-purple-700">{exp.metric}</p>
+                                                    </Tooltip>
+                                                )) : <span className="text-gray-400 italic text-xs">No badges earned yet. Keep researching!</span>}
+                                             </div>
+                                        </div>
+                                     </div>
+                                </div>
+                            </div>
+                        ) : (
+                            insights.prototypingExperiments && insights.prototypingExperiments.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="flex items-center gap-2 text-md font-bold text-purple-900 mb-4">
+                                        <FlaskConical className="text-purple-600" size={20} />
+                                        Prototyping Lab <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-normal">Business Validation</span>
+                                    </h3>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {insights.prototypingExperiments.map((exp, idx) => (
+                                            <div key={idx} className="bg-purple-50/50 border border-purple-100 rounded-xl p-5 hover:border-purple-200 transition-colors">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="bg-white p-2 rounded-lg text-purple-600 shadow-sm border border-purple-100">
+                                                        <Microscope size={20} />
+                                                    </div>
+                                                    <div className="space-y-3 flex-1">
+                                                        <div>
+                                                            <div className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-1">Hypothesis {idx + 1}</div>
+                                                            <p className="text-sm font-semibold text-gray-900">{exp.hypothesis}</p>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <div className="bg-white/60 p-3 rounded-lg">
+                                                                <div className="text-xs font-bold text-gray-500 mb-1">Test Method</div>
+                                                                <p className="text-sm text-gray-800">{exp.method}</p>
+                                                            </div>
+                                                            <div className="bg-white/60 p-3 rounded-lg">
+                                                                <div className="text-xs font-bold text-gray-500 mb-1">Success Metric</div>
+                                                                <p className="text-sm text-gray-800 font-mono text-purple-700">{exp.metric}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-green-50 rounded-xl p-5 border border-green-100">
-                                <h3 className="font-bold text-green-800 mb-3 text-sm uppercase tracking-wide">Opportunities</h3>
-                                <ul className="space-y-2"> {insights.opportunities.map((item, i) => ( <li key={i} className="flex items-start gap-2 text-sm text-green-900"> <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 opacity-60" /> <span>{item}</span> </li> ))} </ul>
+                                <h3 className="font-bold text-green-800 mb-3 text-sm uppercase tracking-wide">
+                                    {isAcademicMode ? "XP Gains (Strengths)" : "Opportunities"}
+                                </h3>
+                                <ul className="space-y-2"> {insights.opportunities.map((item, i) => ( <li key={i} className="flex items-start gap-2 text-sm text-green-900"> <Star size={16} className={`mt-0.5 flex-shrink-0 ${isAcademicMode ? 'text-yellow-500 fill-yellow-500' : 'opacity-60'}`} /> <span>{item}</span> </li> ))} </ul>
                             </div>
                             <div className="bg-red-50 rounded-xl p-5 border border-red-100">
-                                <h3 className="font-bold text-red-800 mb-3 text-sm uppercase tracking-wide">Threats</h3>
+                                <h3 className="font-bold text-red-800 mb-3 text-sm uppercase tracking-wide">
+                                    {isAcademicMode ? "Active Quests (Missing Data)" : "Threats"}
+                                </h3>
                                 <ul className="space-y-2"> {insights.threats.map((item, i) => ( <li key={i} className="flex items-start gap-2 text-sm text-red-900"> <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 opacity-60" /> <span>{item}</span> </li> ))} </ul>
                             </div>
                             <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
-                                <h3 className="font-bold text-blue-800 mb-3 text-sm uppercase tracking-wide">Strategic Advice</h3>
+                                <h3 className="font-bold text-blue-800 mb-3 text-sm uppercase tracking-wide">
+                                    {isAcademicMode ? "Boss Challenge" : "Strategic Advice"}
+                                </h3>
+                                {isAcademicMode && <Sword size={24} className="text-blue-500 mb-2" />}
                                 <p className="text-sm text-blue-900 leading-relaxed"> {insights.strategicAdvice} </p>
                             </div>
                         </div>
@@ -1887,8 +2075,8 @@ const App = () => {
                         <h2 className="text-2xl font-bold text-gray-900">Business Environment Analysis</h2>
                         <p className="text-gray-500">Osterwalder Framework Visualization</p>
                         <div className="flex flex-col items-center mt-2 gap-1">
-                            {data.author && <span className="text-xs font-medium text-gray-400">Student: {data.author}</span>}
-                            {data.courseId && <span className="text-xs font-medium text-gray-400">Course: {data.courseId}</span>}
+                            {data.author && <span className="text-xs font-medium text-gray-400">{isAcademicMode ? "Student" : "Author"}: {data.author}</span>}
+                            {data.courseId && isAcademicMode && <span className="text-xs font-medium text-gray-400">Course: {data.courseId}</span>}
                         </div>
                         {data.description && ( <p className="text-sm text-gray-600 mt-2 max-w-2xl mx-auto border-t border-gray-100 pt-2">{data.description}</p> )}
                     </div>
