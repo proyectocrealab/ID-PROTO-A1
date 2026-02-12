@@ -30,7 +30,14 @@ import {
     Search,
     BookOpen,
     HelpCircle,
-    GraduationCap
+    GraduationCap,
+    Hash,
+    Building2,
+    Sprout,
+    Users,
+    FlaskConical,
+    Microscope,
+    School
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -61,6 +68,7 @@ interface ForceData {
 
 interface AnalysisState {
   author: string;
+  courseId: string; // New Academic Field
   description: string;
   keyTrends: Record<string, string>;
   marketForces: Record<string, string>;
@@ -68,10 +76,17 @@ interface AnalysisState {
   macroEconomicForces: Record<string, string>;
 }
 
+interface Experiment {
+    hypothesis: string;
+    method: string;
+    metric: string;
+}
+
 interface AIInsight {
   opportunities: string[];
   threats: string[];
   strategicAdvice: string;
+  prototypingExperiments: Experiment[]; // New Academic Field
   dataQualityScore: number;
   dataQualityFeedback: string;
 }
@@ -81,12 +96,15 @@ interface ComparativeReport {
   commonPatterns: string[];
   outliers: string[];
   aggregatedStats: { label: string; count: number; description: string }[];
+  averageDataQualityScore: number;
+  keywordTrends: { keyword: string; count: number }[];
 }
 
 // --- CONSTANTS ---
 
 const INITIAL_STATE: AnalysisState = {
   author: '',
+  courseId: '',
   description: '',
   keyTrends: {
     regulatory: '',
@@ -116,20 +134,21 @@ const INITIAL_STATE: AnalysisState = {
   },
 };
 
-const EXAMPLE_DATA: AnalysisState = {
-    author: "Alex Chen",
-    description: "Strategic analysis for 'VerdeGrow', an urban vertical farming startup targeting high-end restaurants and eco-conscious grocery chains in metropolitan areas.",
+const SCENARIO_STARTUP: AnalysisState = {
+    author: "VerdeGrow Team A",
+    courseId: "ENTR-301",
+    description: "Strategic analysis for 'VerdeGrow', a Series A urban vertical farming startup targeting high-end restaurants and eco-conscious grocery chains in metropolitan areas. Focus on premium microgreens and herbs.",
     keyTrends: {
-        regulatory: "Increasing urban zoning incentives for green businesses. Stricter food safety regulations for hydroponics. Carbon tax credits implementation.",
-        technology: "IoT sensors for humidity/soil control becoming cheaper. LED efficiency doubling every 3 years. AI-driven crop cycle management.",
+        regulatory: "Increasing urban zoning incentives for green businesses. Stricter food safety regulations for hydroponics. Carbon tax credits implementation favors low-mileage food.",
+        technology: "IoT sensors for humidity/soil control becoming cheaper. LED efficiency doubling every 3 years. AI-driven crop cycle management allows for rapid iteration.",
         societal: "Massive shift towards 'hyper-local' food sourcing. Rising concern over pesticide use in traditional farming. Urbanites desiring connection to nature.",
         socioeconomic: "Rising food transport costs due to fuel prices making local production competitive. Middle-class expansion in target cities demanding premium produce."
     },
     marketForces: {
         segments: "High-end restaurants (B2B), Organic grocery chains (B2B), Subscription box for health-conscious households (B2C).",
-        needs: "Year-round availability of seasonal crops. Zero-pesticide guarantee. Reduced carbon footprint transparency.",
-        issues: "Price sensitivity in B2C mass market. Skepticism about nutrient density of hydroponic vs soil-grown.",
-        switchingCosts: "Restaurants have long-term contracts with broadline distributors. Low switching costs for individual consumers.",
+        needs: "Year-round availability of seasonal crops. Zero-pesticide guarantee. Reduced carbon footprint transparency. Intense flavor profiles.",
+        issues: "Price sensitivity in B2C mass market. Skepticism about nutrient density of hydroponic vs soil-grown. Logistics of last-mile delivery.",
+        switchingCosts: "Restaurants have long-term contracts with broadline distributors. Low switching costs for individual consumers unless subscription model is sticky.",
         revenue: "High margins on specialty herbs and microgreens. Recurring revenue model via subscriptions. Premium pricing justifiable by 'freshness' factor."
     },
     industryForces: {
@@ -147,6 +166,70 @@ const EXAMPLE_DATA: AnalysisState = {
     }
 };
 
+const SCENARIO_CORPORATE: AnalysisState = {
+    author: "AgriCorp Global Analysis",
+    courseId: "MGMT-450",
+    description: "Strategic analysis for 'AgriCorp Global', a massive traditional agriculture conglomerate launching a vertical farming division. Focus on mass-market scale, supply chain efficiency, and automated monoculture.",
+    keyTrends: {
+        regulatory: "Lobbying for subsidies for large-scale indoor farming infrastructure. Food safety standardization to block smaller players.",
+        technology: "Robotics and full automation to replace manual labor. Proprietary seed genetics optimized for indoor yield. Big Data analytics for yield prediction.",
+        societal: "Consumer demand for consistent quality and lower prices. Distrust of 'factory farming' branding.",
+        socioeconomic: "Labor shortages in traditional farming pushing towards automation. Inflation squeezing consumer wallets, demanding cheaper produce."
+    },
+    marketForces: {
+        segments: "Mass market supermarkets (B2B). Fast food chains requiring consistent lettuce/tomato supply.",
+        needs: "Consistency of supply volume. Lowest possible unit cost. Long shelf life.",
+        issues: "High energy consumption per calorie produced. Difficulty differentiating brand in a commodity market.",
+        switchingCosts: "Very high for supermarkets due to volume requirements; they need partners who can guarantee tons of produce daily.",
+        revenue: "Low margin, high volume. Revenue stability via long-term contracts with major retailers."
+    },
+    industryForces: {
+        competitors: "Other major ag-giants pivoting to indoor. Innovative startups (like VerdeGrow) capturing the premium niche.",
+        newEntrants: "Logistics companies (e.g., Amazon) entering the fresh food space vertically.",
+        substitutes: "Traditional field-grown crops (still much cheaper). Imported greenhouse produce.",
+        suppliers: "Internal vertical integration (owning the seed and nutrient supply). Heavy reliance on energy providers.",
+        stakeholders: "Shareholders demanding quarterly growth. Labor unions resisting automation. National agricultural regulators."
+    },
+    macroEconomicForces: {
+        globalConditions: "Geopolitical instability affecting fertilizer trade. Climate resilience becoming a national security issue.",
+        capitalMarkets: "Access to cheap corporate debt for massive infrastructure build-outs. Mergers and Acquisitions activity heating up.",
+        infrastructure: "Need for massive energy grid upgrades to support Giga-factories. Transport logistics networks.",
+        resources: "Energy security is the primary risk factor. Land scarcity near logistics hubs."
+    }
+};
+
+const SCENARIO_NONPROFIT: AnalysisState = {
+    author: "Student Group 3",
+    courseId: "SOC-200",
+    description: "Strategic analysis for 'UrbanRoots', a community-owned vertical farming cooperative in a food desert. Focus on food security, education, and job training for at-risk youth.",
+    keyTrends: {
+        regulatory: "Government grants for food security initiatives. Educational credits for urban farming programs.",
+        technology: "Open-source farming hardware (low cost). DIY hydroponic systems. Knowledge sharing platforms.",
+        societal: "Community empowerment and health education. Combatting food deserts. 'Food Justice' movements.",
+        socioeconomic: "High unemployment in target neighborhoods. Lack of access to fresh produce in low-income areas."
+    },
+    marketForces: {
+        segments: "Local residents (B2C). School cafeterias (B2G). Local food banks.",
+        needs: "Affordable, nutritious food. Skill development and employment. Community gathering spaces.",
+        issues: "Inability of target market to pay premium prices. Reliance on volunteer labor.",
+        switchingCosts: "Social and emotional connection to the co-op creates high loyalty. Low economic barrier to switch to cheap processed food.",
+        revenue: "Grant funding. Donations. Subsidized vegetable sales. Education workshop fees."
+    },
+    industryForces: {
+        competitors: "Fast food chains (cheap, unhealthy calories). Dollar stores (lack of fresh produce).",
+        newEntrants: "Gentrification pushing out local community spaces. Corporate CSR initiatives competing for same grant money.",
+        substitutes: "Food pantries (canned goods). Community gardens (seasonal).",
+        suppliers: "Donated equipment. Municipal water access. partnerships with universities for seeds.",
+        stakeholders: "Local community board. Grant foundations. City government. Local schools."
+    },
+    macroEconomicForces: {
+        globalConditions: "Inflation disproportionately affecting low-income families. Global food price spikes increasing need for local security.",
+        capitalMarkets: "Reliance on philanthropic capital rather than venture capital. Impact investing trends.",
+        infrastructure: "Repurposing abandoned urban buildings. Access to public transit for community access.",
+        resources: "Volunteer labor availability. Water rights in urban centers."
+    }
+};
+
 const EXAMPLE_INSIGHTS: AIInsight = {
     opportunities: [
         "Capitalize on 'hyper-local' trends by partnering with high-end restaurants for exclusive 'harvest-to-plate' marketing.",
@@ -159,6 +242,23 @@ const EXAMPLE_INSIGHTS: AIInsight = {
         "Consumer skepticism regarding the nutrient profile of hydroponic produce."
     ],
     strategicAdvice: "VerdeGrow should focus aggressively on the B2B high-end restaurant segment to secure high-margin, consistent contracts. Invest in solar offsets to mitigate energy risks and lean into the 'zero-carbon' branding which traditional farms cannot claim. Avoid the mass market B2C race until scale reduces unit economics.",
+    prototypingExperiments: [
+        {
+            hypothesis: "High-end chefs value 'zero-mile' freshness over lower prices.",
+            method: "Smoke Test: Create a landing page offering 'Same-Day Harvest' delivery at a 20% premium vs. standard organic. Run targeted ads to local executive chefs.",
+            metric: "Click-through rate > 3% and at least 5 pre-orders/LOIs signed."
+        },
+        {
+            hypothesis: "Consumers are skeptical of hydroponic nutrient density.",
+            method: "A/B Testing: In-store sampling booth comparing our produce vs. soil-grown. Half the time display nutritional lab results next to samples.",
+            metric: "Purchase conversion rate increases by 15% when lab results are displayed."
+        },
+        {
+            hypothesis: "Subscription churn will be high due to delivery logistics.",
+            method: "Concierge MVP: Manually deliver 50 boxes to beta testers for 4 weeks. Interview every cancellation personally.",
+            metric: "Retention rate > 80% after month 1."
+        }
+    ],
     dataQualityScore: 95,
     dataQualityFeedback: "Excellent depth of analysis. You have identified specific, actionable trends and forces across all quadrants. The connection between regulatory incentives and technology trends is particularly strong."
 };
@@ -278,7 +378,13 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
        - If data is sparse, infer general risks associated with the industry described in the 'description' (Project Context).
     2. Provide Strategic Advice.
        - IMPORTANT: If the input data is insufficient or poor quality, your advice MUST be coaching advice on what specific data is missing and why it is critical to find it. Do not return an empty string.
-    3. Grade the user's data input quality from 0 to 100.
+    3. Generate 3 Specific Prototyping Experiments (Hypothesis Testing).
+       - Based on the opportunities and threats, suggest 3 experiments the user can run to validate their business model.
+       - Each experiment must have:
+         - Hypothesis: What do we believe to be true?
+         - Method: How will we test it? (e.g., Landing Page Smoke Test, Concierge MVP, Interview)
+         - Metric: What determines success? (e.g., Conversion rate > 5%)
+    4. Grade the user's data input quality from 0 to 100.
        - Logic: 
          - 90-100: Excellent depth. Specific, relevant data in all 4 quadrants.
          - 70-89: Good. Most quadrants filled with relevant data.
@@ -291,6 +397,10 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
       "opportunities": ["string", "string", ...],
       "threats": ["string", "string", ...],
       "strategicAdvice": "string (concise paragraph)",
+      "prototypingExperiments": [
+         { "hypothesis": "string", "method": "string", "metric": "string" },
+         ...
+      ],
       "dataQualityScore": number (0-100),
       "dataQualityFeedback": "string (brief explanation of the score and tips to improve)"
     }
@@ -308,10 +418,21 @@ const generateInsights = async (data: AnalysisState, apiKey: string): Promise<AI
                 opportunities: { type: Type.ARRAY, items: { type: Type.STRING } },
                 threats: { type: Type.ARRAY, items: { type: Type.STRING } },
                 strategicAdvice: { type: Type.STRING },
+                prototypingExperiments: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            hypothesis: { type: Type.STRING },
+                            method: { type: Type.STRING },
+                            metric: { type: Type.STRING }
+                        }
+                    }
+                },
                 dataQualityScore: { type: Type.INTEGER },
                 dataQualityFeedback: { type: Type.STRING }
             },
-            required: ["opportunities", "threats", "strategicAdvice", "dataQualityScore", "dataQualityFeedback"]
+            required: ["opportunities", "threats", "strategicAdvice", "prototypingExperiments", "dataQualityScore", "dataQualityFeedback"]
         }
       }
     });
@@ -344,8 +465,21 @@ const generateComparativeReport = async (analyses: AnalysisState[], apiKey: stri
     const prompt = `
       Perform a comparative statistical analysis on the following ${analyses.length} Business Model Environment datasets.
       Datasets: ${JSON.stringify(cleanData, null, 2)}
-      Tasks: Identify recurring themes, outliers, and stats.
-      Output JSON format: { "executiveSummary": "string", "commonPatterns": ["string"], "outliers": ["string"], "aggregatedStats": [{ "label": "string", "count": number, "description": "string" }] }
+      
+      Tasks: 
+      1. Identify recurring themes, outliers, and stats.
+      2. Analyze the 'keyTrends', 'marketForces', 'industryForces', and 'macroEconomicForces' text to count mentions of specific high-impact keywords: 'AI', 'Sustainability', 'Digital', 'Climate', 'Regulation', 'Supply Chain'.
+      3. Grade each dataset's depth/quality (0-100) based on specificity and completeness, then calculate the average score.
+
+      Output JSON format: 
+      { 
+        "executiveSummary": "string", 
+        "commonPatterns": ["string"], 
+        "outliers": ["string"], 
+        "aggregatedStats": [{ "label": "string", "count": number, "description": "string" }],
+        "keywordTrends": [{ "keyword": "string", "count": number }],
+        "averageDataQualityScore": number
+      }
     `;
     try {
         const response = await ai.models.generateContent({
@@ -369,9 +503,20 @@ const generateComparativeReport = async (analyses: AnalysisState[], apiKey: stri
                                     description: { type: Type.STRING }
                                 }
                             }
+                        },
+                        averageDataQualityScore: { type: Type.NUMBER },
+                        keywordTrends: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    keyword: { type: Type.STRING },
+                                    count: { type: Type.NUMBER }
+                                }
+                            }
                         }
                     },
-                    required: ["executiveSummary", "commonPatterns", "outliers", "aggregatedStats"]
+                    required: ["executiveSummary", "commonPatterns", "outliers", "aggregatedStats", "averageDataQualityScore", "keywordTrends"]
                 }
             }
         });
@@ -669,15 +814,16 @@ const App = () => {
   const validateInput = (category: string, id: string, value: string): string | null => {
       const trimmed = value.trim();
       if (category === 'meta' && id === 'description') {
-          if (!trimmed) return "Project context is required for AI analysis.";
-          if (trimmed.length < 50) return `Please provide more context (${50 - trimmed.length} chars remaining).`;
+          if (!trimmed) return "Project context is required for analysis.";
+          if (trimmed.length < 20) return "Too short. Please add more details.";
+          if (trimmed.length < 50) return `Keep going... (${50 - trimmed.length} more chars recommended).`;
           return null;
       }
       // For quadrant inputs
       if (category !== 'meta') {
           // It's okay to be empty, but if not empty, must be substantial
           if (trimmed.length > 0 && trimmed.length < 10) {
-              return "Please provide more detail (min 10 chars).";
+              return "Too brief. Please elaborate slightly (min 10 chars).";
           }
       }
       return null;
@@ -697,6 +843,10 @@ const App = () => {
 
   const handleAuthorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setData(prev => ({ ...prev, author: e.target.value }));
+  };
+  
+  const handleCourseIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setData(prev => ({ ...prev, courseId: e.target.value }));
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -721,25 +871,38 @@ const App = () => {
       }
   };
 
-  const handleLoadExample = () => {
+  const handleLoadExample = (scenario: AnalysisState) => {
     // Check if current data is effectively empty/default to avoid unnecessary confirmation
     const isDefault = JSON.stringify(data) === JSON.stringify(INITIAL_STATE);
     
     // If it's default, we don't need to confirm. If it's not default, we ask.
-    const shouldLoad = isDefault || window.confirm("This will overwrite your current inputs with the Example Project. Continue?");
+    const shouldLoad = isDefault || window.confirm("This will overwrite your current inputs with the selected example. Continue?");
     
     if (shouldLoad) {
         // Deep clone to ensure we have a fresh state
-        const newData = JSON.parse(JSON.stringify(EXAMPLE_DATA));
+        const newData = JSON.parse(JSON.stringify(scenario));
         setData(newData);
         setValidationErrors({});
         
-        // Load pre-canned insights for instant gratification
-        setInsights(EXAMPLE_INSIGHTS);
-        
-        // Switch to Visualize tab so user sees the result immediately
-        setViewMode('visualize');
+        // Load pre-canned insights for instant gratification if it matches the startup scenario
+        if (scenario === SCENARIO_STARTUP) {
+            setInsights(EXAMPLE_INSIGHTS);
+        } else {
+            setInsights(null); // Clear insights for other scenarios so user generates new ones
+        }
     }
+  };
+
+  const handleLoadDemoBatch = () => {
+    if(uploadedAnalyses.length > 0) {
+        if(!window.confirm("This will add 3 demo scenarios to your existing list. Continue?")) return;
+    }
+    setUploadedAnalyses(prev => [
+        ...prev,
+        JSON.parse(JSON.stringify(SCENARIO_STARTUP)),
+        JSON.parse(JSON.stringify(SCENARIO_CORPORATE)),
+        JSON.parse(JSON.stringify(SCENARIO_NONPROFIT))
+    ]);
   };
 
   const handleGenerateInsights = async () => {
@@ -904,6 +1067,18 @@ const App = () => {
         pdf.setFont("helvetica", "bold");
         pdf.text("Detailed Environment Data", margin, yCursor);
         yCursor += 15;
+        
+        // Metadata Line (Author & Course)
+        if (data.author || data.courseId) {
+             pdf.setFontSize(10);
+             pdf.setTextColor(100, 100, 100);
+             pdf.setFont("helvetica", "normal");
+             let metaText = "";
+             if (data.author) metaText += `Student/Author: ${data.author}   `;
+             if (data.courseId) metaText += `Course ID: ${data.courseId}`;
+             pdf.text(metaText, margin, yCursor);
+             yCursor += 10;
+        }
 
         if (data.description) {
             ensureSpace(30); // Check enough space for header + some text
@@ -1092,6 +1267,38 @@ const App = () => {
                 pdf.text(line, margin, yCursor);
                 yCursor += 6;
             });
+
+            // Experiments Section (New)
+            if (insights.prototypingExperiments && insights.prototypingExperiments.length > 0) {
+                ensureSpace(40);
+                pdf.setFontSize(16);
+                pdf.setTextColor(147, 51, 234); // purple-600
+                pdf.setFont("helvetica", "bold");
+                pdf.text("Recommended Prototyping Experiments", margin, yCursor);
+                yCursor += 10;
+
+                insights.prototypingExperiments.forEach((exp, i) => {
+                    const boxHeightExp = 35; // approx
+                    ensureSpace(boxHeightExp + 5);
+                    
+                    pdf.setDrawColor(233, 213, 255); // purple-200
+                    pdf.setFillColor(250, 245, 255); // purple-50
+                    pdf.roundedRect(margin, yCursor, contentWidth, boxHeightExp, 2, 2, 'FD');
+                    
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(107, 33, 168); // purple-800
+                    pdf.setFont("helvetica", "bold");
+                    pdf.text(`Experiment ${i + 1}: ${exp.hypothesis.substring(0, 80)}...`, margin + 4, yCursor + 6);
+                    
+                    pdf.setFontSize(9);
+                    pdf.setTextColor(55, 65, 81);
+                    pdf.setFont("helvetica", "normal");
+                    pdf.text(`Method: ${exp.method}`, margin + 4, yCursor + 14);
+                    pdf.text(`Metric: ${exp.metric}`, margin + 4, yCursor + 22);
+                    
+                    yCursor += boxHeightExp + 5;
+                });
+            }
         }
         
         // Add footer to last page
@@ -1278,6 +1485,17 @@ const App = () => {
                                 <div> <h3 className="font-semibold text-gray-900">Click to upload files</h3> <p className="text-sm text-gray-500 mt-1">Select multiple .json or .pdf files exported from EnvioScan</p> </div>
                             </div>
                         </div>
+                        
+                        <div className="mt-4 flex justify-center">
+                            <button 
+                                onClick={handleLoadDemoBatch}
+                                className="flex items-center gap-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors border border-indigo-200"
+                            >
+                                <BookOpen size={16} />
+                                Load Demo Batch (3 Examples)
+                            </button>
+                        </div>
+
                         {uploadedAnalyses.length > 0 && (
                             <div className="mt-8 border-t border-gray-100 pt-6">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -1362,6 +1580,58 @@ const App = () => {
                             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"> <Sparkles className="text-indigo-600" size={20} /> Executive Summary </h3>
                             <p className="text-gray-700 leading-relaxed">{comparativeReport.executiveSummary}</p>
                         </div>
+                        
+                        {/* New Section: Batch Stats & Quality */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2"> 
+                                    <Activity className="text-indigo-500" size={20} /> 
+                                    Batch Data Quality 
+                                </h3>
+                                <div className="flex items-center gap-6">
+                                    <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center">
+                                         <svg className="w-full h-full transform -rotate-90">
+                                            <circle cx="40" cy="40" r="32" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-100" />
+                                            <circle cx="40" cy="40" r="32" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={200} strokeDashoffset={200 - (200 * (comparativeReport.averageDataQualityScore || 0)) / 100} className="text-indigo-600 transition-all duration-1000 ease-out" />
+                                        </svg>
+                                        <span className="absolute text-xl font-bold text-gray-900">{comparativeReport.averageDataQualityScore || 0}</span>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-600">Average estimated completeness score across {uploadedAnalyses.length} reports.</p>
+                                        <div className="mt-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block">
+                                            {(comparativeReport.averageDataQualityScore || 0) > 70 ? 'High Quality Batch' : 'Variable Quality Batch'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2"> 
+                                    <Hash className="text-purple-500" size={20} /> 
+                                    Keyword Trends 
+                                </h3>
+                                <div className="space-y-3">
+                                    {comparativeReport.keywordTrends?.map((trend, i) => (
+                                        <div key={i} className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600 font-medium">{trend.keyword}</span>
+                                            <div className="flex items-center gap-2 w-1/2">
+                                                <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                                    <div 
+                                                        className="bg-purple-500 h-full rounded-full" 
+                                                        style={{ width: `${Math.min(100, (trend.count / uploadedAnalyses.length) * 100)}%` }} 
+                                                    />
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-900 w-6 text-right">{trend.count}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {(!comparativeReport.keywordTrends || comparativeReport.keywordTrends.length === 0) && (
+                                        <p className="text-xs text-gray-400 italic">No specific keyword trends detected.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2"> <div className="w-2 h-6 bg-green-500 rounded-full"></div> Common Patterns </h3>
@@ -1391,15 +1661,16 @@ const App = () => {
                 <div className="lg:col-span-1 space-y-2">
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4 space-y-4">
                         <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Author</label>
-                                <Tooltip content="The name that will appear on the final report" position="left">
-                                    <HelpCircle size={12} className="text-gray-400 cursor-help" />
-                                </Tooltip>
-                            </div>
-                            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
-                                <User size={16} className="text-gray-400" />
-                                <input type="text" value={data.author} onChange={handleAuthorChange} placeholder="Your Name" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Student Information</h3>
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
+                                    <User size={16} className="text-gray-400" />
+                                    <input type="text" value={data.author} onChange={handleAuthorChange} placeholder="Student Name" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
+                                </div>
+                                <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
+                                    <School size={16} className="text-gray-400" />
+                                    <input type="text" value={data.courseId} onChange={handleCourseIdChange} placeholder="Course ID (e.g. ENTR-101)" className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400" />
+                                </div>
                             </div>
                         </div>
                         <div>
@@ -1414,19 +1685,44 @@ const App = () => {
                                     <AlignLeft size={16} className="text-gray-400 mt-1" />
                                     <textarea value={data.description} onChange={handleDescriptionChange} placeholder="Briefly describe the business context..." rows={3} className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder:text-gray-400 resize-none" />
                                 </div>
-                                {validationErrors['meta.description'] && (
-                                    <div className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1">
-                                        <AlertCircle size={10} />
-                                        {validationErrors['meta.description']}
+                                <div className="flex justify-between items-center mt-1">
+                                    <div className="flex-1">
+                                        {validationErrors['meta.description'] && (
+                                            <div className="text-xs text-red-500 font-medium flex items-center gap-1">
+                                                <AlertCircle size={10} />
+                                                {validationErrors['meta.description']}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                    <div className={`text-[10px] whitespace-nowrap ml-2 ${data.description.length < 50 ? 'text-red-400' : 'text-green-600 font-semibold'}`}>
+                                        {data.description.length} / 50 min
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <Tooltip content="Populate with sample data to demonstrate functionality" position="top" className="w-full">
-                            <button onClick={handleLoadExample} className="w-full text-xs flex items-center justify-center gap-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-2 rounded-lg font-medium transition-colors">
-                                <BookOpen size={14} /> Load Example Project
-                            </button>
-                        </Tooltip>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Load Example Scenario</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <Tooltip content="Startup (VerdeGrow)" position="top">
+                                    <button onClick={() => handleLoadExample(SCENARIO_STARTUP)} className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 hover:bg-green-50 text-gray-500 hover:text-green-600 border border-gray-200 hover:border-green-200 transition-all text-xs font-medium gap-1">
+                                        <Sprout size={16} />
+                                        <span>Startup</span>
+                                    </button>
+                                </Tooltip>
+                                <Tooltip content="Corporate (AgriCorp)" position="top">
+                                    <button onClick={() => handleLoadExample(SCENARIO_CORPORATE)} className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-200 transition-all text-xs font-medium gap-1">
+                                        <Building2 size={16} />
+                                        <span>Corp</span>
+                                    </button>
+                                </Tooltip>
+                                <Tooltip content="Non-Profit (UrbanRoots)" position="top">
+                                    <button onClick={() => handleLoadExample(SCENARIO_NONPROFIT)} className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 hover:bg-orange-50 text-gray-500 hover:text-orange-600 border border-gray-200 hover:border-orange-200 transition-all text-xs font-medium gap-1">
+                                        <Users size={16} />
+                                        <span>Non-Prof</span>
+                                    </button>
+                                </Tooltip>
+                            </div>
+                        </div>
                     </div>
                     <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Analysis Quadrants</h2>
                     {FORCES_CONFIG.map((force) => (
@@ -1474,15 +1770,18 @@ const App = () => {
                                                 onChange={(e) => handleInputChange(activeTab, section.id, e.target.value)} 
                                                 placeholder={section.placeholder} 
                                                 rows={4} 
-                                                className={`w-full p-3 rounded-lg border transition-all text-sm resize-none ${validationErrors[`${activeTab}.${section.id}`] ? 'bg-red-50 border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'bg-gray-50 border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'}`} 
+                                                className={`w-full p-3 pb-6 rounded-lg border transition-all text-sm resize-none ${validationErrors[`${activeTab}.${section.id}`] ? 'bg-red-50 border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'bg-gray-50 border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'}`} 
                                             />
-                                            {validationErrors[`${activeTab}.${section.id}`] && (
-                                                <div className="absolute top-full left-0 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
-                                                    <AlertCircle size={10} />
-                                                    {validationErrors[`${activeTab}.${section.id}`]}
-                                                </div>
-                                            )}
+                                            <div className="absolute bottom-2 right-2 text-[10px] pointer-events-none px-1 rounded bg-white/50 text-gray-400 font-mono">
+                                                {data[activeTab][section.id]?.length || 0} chars
+                                            </div>
                                         </div>
+                                        {validationErrors[`${activeTab}.${section.id}`] && (
+                                            <div className="text-xs text-red-500 font-medium flex items-center gap-1 animate-in slide-in-from-top-1 fade-in duration-200">
+                                                <AlertCircle size={10} />
+                                                {validationErrors[`${activeTab}.${section.id}`]}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                              </div>
@@ -1529,6 +1828,44 @@ const App = () => {
                             </div>
                         </div>
                          <div className="mb-6 bg-white/60 p-4 rounded-lg border border-indigo-50 text-sm text-indigo-900 flex items-start gap-3"> <Activity size={16} className="mt-0.5 text-indigo-500 flex-shrink-0" /> <p>{insights.dataQualityFeedback}</p> </div>
+                        
+                        {/* New Prototyping Lab Section for Academic Use */}
+                        {insights.prototypingExperiments && insights.prototypingExperiments.length > 0 && (
+                            <div className="mb-6">
+                                <h3 className="flex items-center gap-2 text-md font-bold text-purple-900 mb-4">
+                                    <FlaskConical className="text-purple-600" size={20} />
+                                    Prototyping Lab <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-normal">Academic Feature</span>
+                                </h3>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {insights.prototypingExperiments.map((exp, idx) => (
+                                        <div key={idx} className="bg-purple-50/50 border border-purple-100 rounded-xl p-5 hover:border-purple-200 transition-colors">
+                                            <div className="flex items-start gap-3">
+                                                <div className="bg-white p-2 rounded-lg text-purple-600 shadow-sm border border-purple-100">
+                                                    <Microscope size={20} />
+                                                </div>
+                                                <div className="space-y-3 flex-1">
+                                                    <div>
+                                                        <div className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-1">Hypothesis {idx + 1}</div>
+                                                        <p className="text-sm font-semibold text-gray-900">{exp.hypothesis}</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="bg-white/60 p-3 rounded-lg">
+                                                            <div className="text-xs font-bold text-gray-500 mb-1">Test Method</div>
+                                                            <p className="text-sm text-gray-800">{exp.method}</p>
+                                                        </div>
+                                                        <div className="bg-white/60 p-3 rounded-lg">
+                                                            <div className="text-xs font-bold text-gray-500 mb-1">Success Metric</div>
+                                                            <p className="text-sm text-gray-800 font-mono text-purple-700">{exp.metric}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-green-50 rounded-xl p-5 border border-green-100">
                                 <h3 className="font-bold text-green-800 mb-3 text-sm uppercase tracking-wide">Opportunities</h3>
@@ -1549,6 +1886,10 @@ const App = () => {
                     <div className="mb-8 text-center">
                         <h2 className="text-2xl font-bold text-gray-900">Business Environment Analysis</h2>
                         <p className="text-gray-500">Osterwalder Framework Visualization</p>
+                        <div className="flex flex-col items-center mt-2 gap-1">
+                            {data.author && <span className="text-xs font-medium text-gray-400">Student: {data.author}</span>}
+                            {data.courseId && <span className="text-xs font-medium text-gray-400">Course: {data.courseId}</span>}
+                        </div>
                         {data.description && ( <p className="text-sm text-gray-600 mt-2 max-w-2xl mx-auto border-t border-gray-100 pt-2">{data.description}</p> )}
                     </div>
                     <EnvironmentCanvas data={data} />
