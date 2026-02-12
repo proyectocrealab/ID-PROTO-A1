@@ -8,7 +8,6 @@ import {
     Sparkles, 
     ChevronRight, 
     Info, 
-    CheckCircle2, 
     Loader2,
     ShieldAlert,
     User,
@@ -25,7 +24,6 @@ import {
     Globe, 
     Target, 
     Factory,
-    Key,
     X,
     Search,
     BookOpen,
@@ -44,7 +42,7 @@ import {
     Crown,
     Sword,
     Scroll,
-    Map
+    Map as MapIcon
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -75,7 +73,7 @@ interface ForceData {
 
 interface AnalysisState {
   author: string;
-  courseId: string; // New Academic Field
+  courseId: string;
   description: string;
   keyTrends: Record<string, string>;
   marketForces: Record<string, string>;
@@ -93,7 +91,7 @@ interface AIInsight {
   opportunities: string[];
   threats: string[];
   strategicAdvice: string;
-  prototypingExperiments: Experiment[]; // New Academic Field
+  prototypingExperiments: Experiment[];
   dataQualityScore: number;
   dataQualityFeedback: string;
 }
@@ -239,35 +237,19 @@ const SCENARIO_NONPROFIT: AnalysisState = {
 
 const EXAMPLE_INSIGHTS: AIInsight = {
     opportunities: [
-        "Capitalize on 'hyper-local' trends by partnering with high-end restaurants for exclusive 'harvest-to-plate' marketing.",
-        "Leverage carbon tax credits to subsidize initial hardware costs.",
-        "Develop proprietary AI crop cycle management as a licensable SaaS product for other growers."
+        "XP GAIN: Strong Regulatory Analysis - Capitalize on carbon tax credits by documenting 'food miles' savings.",
+        "XP GAIN: Technology Foresight - Leveraging IoT sensors positions you ahead of manual labor-reliant competitors.",
+        "XP GAIN: Societal Alignment - 'Hyper-local' branding perfectly matches current urban consumer sentiment."
     ],
     threats: [
-        "Energy price spikes could erode margins significantly compared to traditional farming.",
-        "Market saturation from new container farming franchises lowering entry barriers.",
-        "Consumer skepticism regarding the nutrient profile of hydroponic produce."
+        "QUEST: Investigate specific city zoning laws for 'vertical farming' in your target zip codes.",
+        "QUEST: Calculate the exact switching cost for a high-end restaurant to leave their current supplier.",
+        "QUEST: Research the current price per kWh in your target city to validate operational costs."
     ],
-    strategicAdvice: "VerdeGrow should focus aggressively on the B2B high-end restaurant segment to secure high-margin, consistent contracts. Invest in solar offsets to mitigate energy risks and lean into the 'zero-carbon' branding which traditional farms cannot claim. Avoid the mass market B2C race until scale reduces unit economics.",
-    prototypingExperiments: [
-        {
-            hypothesis: "High-end chefs value 'zero-mile' freshness over lower prices.",
-            method: "Smoke Test: Create a landing page offering 'Same-Day Harvest' delivery at a 20% premium vs. standard organic. Run targeted ads to local executive chefs.",
-            metric: "Click-through rate > 3% and at least 5 pre-orders/LOIs signed."
-        },
-        {
-            hypothesis: "Consumers are skeptical of hydroponic nutrient density.",
-            method: "A/B Testing: In-store sampling booth comparing our produce vs. soil-grown. Half the time display nutritional lab results next to samples.",
-            metric: "Purchase conversion rate increases by 15% when lab results are displayed."
-        },
-        {
-            hypothesis: "Subscription churn will be high due to delivery logistics.",
-            method: "Concierge MVP: Manually deliver 50 boxes to beta testers for 4 weeks. Interview every cancellation personally.",
-            metric: "Retention rate > 80% after month 1."
-        }
-    ],
+    strategicAdvice: "BOSS FIGHT: You identified that 'Macro Economic Resource' costs (energy) are rising, yet your 'Market Force' strategy relies on premium pricing in a price-sensitive inflationary environment. How can you redesign your revenue model to be resilient if energy costs spike by another 30%?",
+    prototypingExperiments: [],
     dataQualityScore: 95,
-    dataQualityFeedback: "Excellent depth of analysis. You have identified specific, actionable trends and forces across all quadrants. The connection between regulatory incentives and technology trends is particularly strong."
+    dataQualityFeedback: "Excellent depth of analysis. You have identified specific, actionable trends and forces across all quadrants."
 };
 
 const FORCES_CONFIG: ForceData[] = [
@@ -382,13 +364,13 @@ const hexToRgb = (hex: string) => {
     } : { r: 0, g: 0, b: 0 };
 };
 
-const generateInsights = async (data: AnalysisState, apiKey: string, isAcademicMode: boolean): Promise<AIInsight | null> => {
-  if (!apiKey) {
+const generateInsights = async (data: AnalysisState, isAcademicMode: boolean): Promise<AIInsight | null> => {
+  if (!process.env.API_KEY) {
     console.warn("API Key missing");
     return null;
   }
 
-  const ai = new GoogleGenAI({ apiKey: apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Custom prompt construction based on mode
   let roleInstruction = "";
@@ -396,28 +378,44 @@ const generateInsights = async (data: AnalysisState, apiKey: string, isAcademicM
   if (isAcademicMode) {
       roleInstruction = `
       ROLE: Gamified Strategy Tutor & Quest Giver.
-      GOAL: Guide the student through the 'Game of Business Strategy'. DO NOT give them the answers. Give them feedback to level up their analysis.
+      GOAL: Guide the student through the 'Game of Business Strategy'. 
+      CONTEXT: The student has provided a Business Model Environment analysis.
       
       TONE: Encouraging, Challenging, Gamified (use terms like 'XP', 'Quest', 'Boss Fight').
 
       SPECIFIC INSTRUCTIONS FOR JSON OUTPUT MAPPING:
-      1. "opportunities": List 3 specific strengths in their input. Label these as "XP GAINS". (e.g., "XP GAIN: Excellent identification of regulatory headwinds.")
-      2. "threats": List 3 specific missing data points or weak assumptions. Label these as "ACTIVE QUESTS". (e.g., "QUEST: Investigate the specific switching costs for your customer segment.")
-      3. "strategicAdvice": Provide ONE major complex question that connects two quadrants. Label this as "BOSS FIGHT". (e.g., "BOSS FIGHT: How does your Technology Trend of AI specifically mitigate the Industry Force of Supplier Power?")
+      1. "opportunities": List 3 specific strengths where the student provided detailed, high-quality analysis. Label these as "XP GAINS". 
+         - Format: "XP GAIN: [Specific concept they nailed] - [Why it's good]."
+      2. "threats": List 3 specific "ACTIVE QUESTS" to fill gaps or deepen the research. 
+         - CRITICAL: These must be tailored to the *specific content* they entered. Do not give generic advice like "fill more fields".
+         - If they mentioned "Regulations", ask for specific laws. If they mentioned "Competitors", ask for specific names or market shares.
+         - Format: "QUEST: [Actionable research task based on their input]."
+      3. "strategicAdvice": Generate a "BOSS FIGHT". This is a complex synthesis question that forces them to resolve a conflict between two different quadrants they filled out.
+         - Example: "BOSS FIGHT: You noted [Trend A] supports growth, but [Macro Force B] restricts capital. How do you fund expansion under these conditions?"
       4. "prototypingExperiments": Return an empty array [].
-      5. "dataQualityScore": Grade strictly on research depth (0-100).
+      5. "dataQualityScore": Grade research depth AND categorization accuracy. 
+         - Base: 4+ detailed points/concepts per category = 100/100. 
+         - PENALTY: Deduct 10-15 points for data placed in the wrong category (e.g., listing a 'Competitor' under 'Macro-Economics' or a 'Market Segment' under 'Industry Forces').
+      6. "dataQualityFeedback": Evaluate depth and accuracy. YOU MUST EXPLICITLY IDENTIFY MISPLACED DATA. 
+         - If data is in the wrong quadrant, tell them specifically: "You listed 'X' in [Category A], but it belongs in [Category B]."
       `;
   } else {
       roleInstruction = `
       ROLE: Senior Strategy Consultant.
-      GOAL: Provide executive-level strategic foresight and risk mitigation strategies.
-      TONE: Professional, concise, action-oriented.
+      GOAL: Provide executive-level strategic foresight, specific risk mitigation, and actionable capitalisation strategies.
+      CONTEXT: Analyzing a Business Model Environment.
       
       SPECIFIC INSTRUCTIONS:
-      1. Analyze Opportunities and Threats: Focus on macro-economic risks and strategic positioning.
-      2. Strategic Advice: Focus on execution, scalability, and competitive advantage.
-      3. Prototyping Experiments: Suggest 3 specific experiments (Hypothesis/Method/Metric) to validate business assumptions.
-      4. Grading: Assess the completeness of the data for strategic decision making.
+      1. "opportunities": Identify key external tailwinds. For each, provide a specific *strategic move* to capitalize on it.
+         - Format: "Opportunity: [Trend/Force]. Strategy: [Specific Action]."
+      2. "threats": Identify critical external headwinds. For each, provide a specific *mitigation tactic*.
+         - Format: "Threat: [Trend/Force]. Mitigation: [Specific Tactic]."
+      3. "strategicAdvice": Synthesize the landscape into a coherent executive summary strategy. Focus on execution, competitive advantage, and scalability.
+      4. "prototypingExperiments": Suggest 3 specific, falsifiable experiments (Hypothesis/Method/Metric) to validate the riskiest assumptions inherent in their analysis.
+      5. "dataQualityScore": Assess completeness and classification validity. 
+         - Base: 4+ specific data points per quadrant represents 100% depth.
+         - PENALTY: Deduct score significantly if the user has confused the quadrants (e.g., putting 'Inflation' (Macro) into 'Industry Forces').
+      6. "dataQualityFeedback": specific feedback on analysis robustness. YOU MUST FLAG CATEGORIZATION ERRORS. If a point is misplaced, suggest the correct category.
       `;
   }
 
@@ -484,10 +482,10 @@ const generateInsights = async (data: AnalysisState, apiKey: string, isAcademicM
   }
 };
 
-const generateComparativeReport = async (analyses: AnalysisState[], apiKey: string): Promise<ComparativeReport | null> => {
-    if (!apiKey) return null;
+const generateComparativeReport = async (analyses: AnalysisState[]): Promise<ComparativeReport | null> => {
+    if (!process.env.API_KEY) return null;
     
-    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const cleanData = analyses.map((a, index) => ({
         id: index + 1,
         author: a.author,
@@ -586,96 +584,6 @@ const Tooltip = ({ content, children, position = 'top', className = '' }: { cont
   );
 };
 
-const ApiKeyModal = ({ 
-    isOpen, 
-    onClose, 
-    onSave, 
-    onRemove,
-    hasKey
-}: { 
-    isOpen: boolean; 
-    onClose: () => void; 
-    onSave: (key: string) => void; 
-    onRemove: () => void;
-    hasKey: boolean;
-}) => {
-    const [key, setKey] = useState('');
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative">
-                <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-                    <X size={20} />
-                </button>
-                
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
-                        <Key size={24} />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Gemini API Configuration</h2>
-                </div>
-
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
-                        To generate insights, this app requires a Google Gemini API Key. Your key is stored locally in your browser and never sent to our servers.
-                    </p>
-                    
-                    <div>
-                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
-                            {hasKey ? 'Update API Key' : 'Enter your API Key'}
-                        </label>
-                        <input 
-                            type="password" 
-                            value={key}
-                            onChange={(e) => setKey(e.target.value)}
-                            placeholder={hasKey ? "Enter new key to update..." : "AIzaSy..."}
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-mono text-sm"
-                        />
-                    </div>
-
-                    <div className="space-y-3">
-                        <button 
-                            type="button"
-                            onClick={() => onSave(key)}
-                            disabled={!key}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {hasKey ? 'Update API Key' : 'Save API Key'}
-                        </button>
-
-                        {hasKey && (
-                            <button 
-                                type="button"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onRemove();
-                                }}
-                                className="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Trash2 size={16} /> Remove Saved Key
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="pt-4 border-t border-gray-100 text-center">
-                        <a 
-                            href="https://aistudio.google.com/app/apikey" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium hover:underline"
-                        >
-                            Get a free Gemini API Key →
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 interface EnvironmentCanvasProps {
   data: AnalysisState;
   id?: string;
@@ -684,7 +592,7 @@ interface EnvironmentCanvasProps {
 const EnvironmentCanvas: React.FC<EnvironmentCanvasProps> = ({ data, id }) => {
   const renderSectionContent = (categoryKey: string, subKey: string) => {
     // @ts-ignore
-    const val = data[categoryKey]?.[subKey];
+    const val = data[categoryKey] && data[categoryKey][subKey];
     if (!val) return <span className="text-gray-400 italic text-xs">Not specified</span>;
     return <span className="text-gray-800 text-xs font-medium">{val}</span>;
   };
@@ -774,7 +682,7 @@ const EnvironmentCanvas: React.FC<EnvironmentCanvasProps> = ({ data, id }) => {
             </div>
         </div>
       </div>
-      <div className="absolute bottom-4 right-4 text-xs text-gray-300 pointer-events-none">Generated by EnvioScan</div>
+      <div className="absolute bottom-4 right-4 text-xs text-gray-300 pointer-events-none">Generated by Mr Arthur</div>
       {data.author && <div className="absolute bottom-4 left-4 text-xs font-semibold text-gray-400 pointer-events-none">Analysis by {data.author}</div>}
     </div>
   );
@@ -790,8 +698,7 @@ if (pdfjs) {
     pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 }
 
-const STORAGE_KEY = 'ENVIOSCAN_DATA';
-const API_KEY_STORAGE = 'ENVIOSCAN_API_KEY';
+const STORAGE_KEY = 'MR_ARTHUR_DATA';
 
 const App = () => {
   const [data, setData] = useState<AnalysisState>(() => {
@@ -812,13 +719,6 @@ const App = () => {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [isAcademicMode, setIsAcademicMode] = useState(false); // New Mode State
-
-  // API Key State
-  const [apiKey, setApiKey] = useState<string>(() => {
-      // Check localStorage or fallback to empty (secure default)
-      return localStorage.getItem(API_KEY_STORAGE) || '';
-  });
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const [uploadedAnalyses, setUploadedAnalyses] = useState<AnalysisState[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -844,7 +744,7 @@ const App = () => {
         force.subSections.forEach(sub => {
             totalFields++;
             // @ts-ignore
-            const val = data[force.id][sub.id];
+            const val = data[force.id] && data[force.id][sub.id];
             if (val && val.length >= 10) {
                 filledFields++;
             }
@@ -875,20 +775,6 @@ const App = () => {
 
     return { xp, level: currentLevel, nextLevel, progressPercent, earnedBadges };
   }, [data]);
-
-  const handleSaveApiKey = (key: string) => {
-      setApiKey(key);
-      localStorage.setItem(API_KEY_STORAGE, key);
-      setShowApiKeyModal(false);
-  };
-
-  const handleRemoveApiKey = () => {
-      if (window.confirm("Are you sure you want to remove your API Key? You will need to enter it again to use AI features.")) {
-        setApiKey('');
-        localStorage.removeItem(API_KEY_STORAGE);
-        setShowApiKeyModal(false);
-      }
-  };
 
   const validateInput = (category: string, id: string, value: string): string | null => {
       const trimmed = value.trim();
@@ -997,7 +883,7 @@ const App = () => {
     FORCES_CONFIG.forEach(force => {
         force.subSections.forEach(sub => {
             // @ts-ignore
-            const val = data[force.id][sub.id];
+            const val = data[force.id] && data[force.id][sub.id];
             if (val && val.trim().length >= 10) totalDataPoints++;
             
             const err = validateInput(force.id, sub.id, val);
@@ -1016,23 +902,18 @@ const App = () => {
         return;
     }
 
-    if (!apiKey) {
-        setShowApiKeyModal(true);
-        return;
-    }
-
     setIsGenerating(true);
     try {
-        const result = await generateInsights(data, apiKey, isAcademicMode);
+        const result = await generateInsights(data, isAcademicMode);
         if (result) {
             setInsights(result);
             setViewMode('visualize');
         } else {
-             alert("Failed to generate insights. Please try again.");
+             alert("Failed to generate insights. Ensure your API Key is set correctly in the environment.");
         }
     } catch (err) {
         console.error("Critical error generating insights", err);
-        alert("An error occurred. Make sure your API Key is valid.");
+        alert("An error occurred. Ensure your API Key is valid.");
     } finally {
         setIsGenerating(false);
     }
@@ -1044,7 +925,7 @@ const App = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `envioscan_progress_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `mr_arthur_progress_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1088,7 +969,7 @@ const App = () => {
             title: 'Environment Analysis', 
             subject: JSON.stringify(data), 
             author: data.author, 
-            creator: 'EnvioScan App' 
+            creator: 'Mr Arthur App' 
         });
 
         const pageWidth = pdf.internal.pageSize.getWidth();
@@ -1100,7 +981,7 @@ const App = () => {
         const addFooter = (pageNum: number) => {
             pdf.setFontSize(8);
             pdf.setTextColor(150, 150, 150);
-            pdf.text(`Page ${pageNum} | EnvioScan Analysis | ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
+            pdf.text(`Page ${pageNum} | Mr Arthur Analysis | ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
         };
 
         // --- Page 1: Canvas Image ---
@@ -1423,7 +1304,7 @@ const App = () => {
     setIsComparing(false);
 
     if (errorCount > 0) {
-        alert(`Imported ${newAnalyses.length} report(s). Skipped ${errorCount} invalid file(s). Note: Only PDF/JSON files exported from EnvioScan are supported.`);
+        alert(`Imported ${newAnalyses.length} report(s). Skipped ${errorCount} invalid file(s). Note: Only PDF/JSON files exported from Mr Arthur are supported.`);
     }
   };
 
@@ -1433,21 +1314,16 @@ const App = () => {
   );
 
   const runComparison = async () => {
-      if (!apiKey) {
-          setShowApiKeyModal(true);
-          return;
-      }
-      
       const targetAnalyses = filteredAnalyses;
       if (targetAnalyses.length === 0) return;
 
       setIsComparing(true);
       try {
-        const report = await generateComparativeReport(targetAnalyses, apiKey);
+        const report = await generateComparativeReport(targetAnalyses);
         if (report) {
             setComparativeReport(report);
         } else {
-            alert("Failed to generate comparative report.");
+            alert("Failed to generate comparative report. Ensure API Key is set.");
         }
       } catch (err) {
         console.error(err);
@@ -1469,22 +1345,35 @@ const App = () => {
       return 'Insufficient Data';
   };
 
+  // EXTRACTED JSX CONTENT VARIABLES FOR TOOLTIPS TO AVOID PARSER CONFUSION
+  const gradingTooltipContent = (
+    <div className="text-left space-y-1">
+        <div className="font-bold border-b border-gray-600 pb-1 mb-1">Grading Criteria</div>
+        <div><span className="text-green-400 font-bold">90-100:</span> Excellent depth (4+ points/category)</div>
+        <div><span className="text-blue-400 font-bold">70-89:</span> Good coverage</div>
+        <div><span className="text-yellow-400 font-bold">50-69:</span> Average / Missing sections</div>
+        <div><span className="text-red-400 font-bold">0-49:</span> Poor / Sparse data</div>
+    </div>
+  );
+
+  const dataQualityTooltip = (
+    <div className="text-left space-y-1">
+        <div className="font-bold border-b border-gray-600 pb-1 mb-1">Grading Criteria</div>
+        <div><span className="text-green-400 font-bold">90-100:</span> Excellent depth (4+ points/category)</div>
+        <div><span className="text-blue-400 font-bold">70-89:</span> Good coverage</div>
+        <div><span className="text-yellow-400 font-bold">50-69:</span> Average / Missing sections</div>
+        <div><span className="text-red-400 font-bold">0-49:</span> Poor / Sparse data</div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100">
-      <ApiKeyModal 
-        isOpen={showApiKeyModal} 
-        onClose={() => setShowApiKeyModal(false)} 
-        onSave={handleSaveApiKey}
-        onRemove={handleRemoveApiKey}
-        hasKey={!!apiKey}
-      />
-
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-gray-900 text-white p-2 rounded-lg"> <LayoutDashboard size={20} /> </div>
             <div>
-                <h1 className="text-xl font-bold tracking-tight">EnvioScan</h1>
+                <h1 className="text-xl font-bold tracking-tight">Mr Arthur</h1>
                 <div className="flex items-center gap-2">
                     <p className="text-xs text-gray-500 hidden sm:block">Business Model Environment Analyst</p>
                     {lastSaved && ( <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded flex items-center gap-1"> <Save size={10} /> Saved </span> )}
@@ -1510,15 +1399,6 @@ const App = () => {
                 </button>
             </div>
 
-            <Tooltip content={apiKey ? "Update your API Key" : "Required for AI Insights"} position="bottom">
-                <button 
-                    onClick={() => setShowApiKeyModal(true)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all border ${apiKey ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 animate-pulse'}`}
-                >
-                    <Key size={14} />
-                    {apiKey ? 'API Key Set' : 'Set API Key'}
-                </button>
-            </Tooltip>
             <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
             <div className="flex items-center bg-gray-100 p-1 rounded-lg">
                 <Tooltip content="Edit analysis data" position="bottom">
@@ -1540,14 +1420,14 @@ const App = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mb-8">
                     <div className="text-center mb-8">
                         <h2 className="text-2xl font-bold text-gray-900">Comparative Analysis</h2>
-                        <p className="text-gray-500 max-w-2xl mx-auto mt-2">Upload multiple JSON or PDF reports generated by EnvioScan to identify patterns.</p>
+                        <p className="text-gray-500 max-w-2xl mx-auto mt-2">Upload multiple JSON or PDF reports generated by Mr Arthur to identify patterns.</p>
                     </div>
                     <div className="max-w-xl mx-auto">
                         <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
                             <input ref={fileInputRef} type="file" accept=".pdf,.json,application/pdf,application/json" multiple={true} onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                             <div className="flex flex-col items-center gap-3">
                                 <div className="p-4 bg-indigo-50 text-indigo-600 rounded-full"> <FileUp size={32} /> </div>
-                                <div> <h3 className="font-semibold text-gray-900">Click to upload files</h3> <p className="text-sm text-gray-500 mt-1">Select multiple .json or .pdf files exported from EnvioScan</p> </div>
+                                <div> <h3 className="font-semibold text-gray-900">Click to upload files</h3> <p className="text-sm text-gray-500 mt-1">Select multiple .json or .pdf files exported from Mr Arthur</p> </div>
                             </div>
                         </div>
                         
@@ -1676,7 +1556,7 @@ const App = () => {
                                     Keyword Trends 
                                 </h3>
                                 <div className="space-y-3">
-                                    {comparativeReport.keywordTrends?.map((trend, i) => (
+                                    {comparativeReport.keywordTrends && comparativeReport.keywordTrends.map((trend, i) => (
                                         <div key={i} className="flex items-center justify-between text-sm">
                                             <span className="text-gray-600 font-medium">{trend.keyword}</span>
                                             <div className="flex items-center gap-2 w-1/2">
@@ -1951,13 +1831,7 @@ const App = () => {
                                     <div> 
                                         <div className="flex items-center gap-1">
                                             <div className="text-xs font-bold uppercase tracking-wide opacity-80">{isAcademicMode ? 'Research Grade' : 'Data Quality'}</div> 
-                                            <Tooltip content={<div className="text-left space-y-1">
-                                                <div className="font-bold border-b border-gray-600 pb-1 mb-1">Grading Criteria</div>
-                                                <div><span className="text-green-400 font-bold">90-100:</span> Excellent depth (6+ points/category)</div>
-                                                <div><span className="text-blue-400 font-bold">70-89:</span> Good coverage</div>
-                                                <div><span className="text-yellow-400 font-bold">50-69:</span> Average / Missing sections</div>
-                                                <div><span className="text-red-400 font-bold">0-49:</span> Poor / Sparse data</div>
-                                            </div>} position="bottom">
+                                            <Tooltip content={dataQualityTooltip} position="bottom">
                                                 <Info size={12} className="text-gray-400 cursor-help" />
                                             </Tooltip>
                                         </div>
@@ -1998,11 +1872,13 @@ const App = () => {
                                              <div className="font-bold text-indigo-700 mb-1 flex items-center gap-2"><Crown size={16}/> Earned Badges</div>
                                              <div className="flex gap-1.5 flex-wrap mt-2">
                                                 {gamificationStats.earnedBadges.length > 0 ? gamificationStats.earnedBadges.map(badge => (
-                                                    <Tooltip key={badge.id} content={badge.name} position="top">
-                                                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-50 border border-yellow-200 text-yellow-600 shadow-sm">
-                                                            {React.createElement(badge.icon, { size: 14 })}
-                                                        </div>
-                                                    </Tooltip>
+                                                    <React.Fragment key={badge.id}>
+                                                        <Tooltip content={badge.name} position="top">
+                                                            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-50 border border-yellow-200 text-yellow-600 shadow-sm">
+                                                                {React.createElement(badge.icon, { size: 14 })}
+                                                            </div>
+                                                        </Tooltip>
+                                                    </React.Fragment>
                                                 )) : <span className="text-gray-400 italic text-xs">No badges earned yet. Keep researching!</span>}
                                              </div>
                                         </div>
