@@ -42,7 +42,9 @@ import {
     Crown,
     Sword,
     Scroll,
-    Map as MapIcon
+    Key,
+    Map as MapIcon,
+    CheckCircle2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import html2canvas from 'html2canvas';
@@ -364,13 +366,13 @@ const hexToRgb = (hex: string) => {
     } : { r: 0, g: 0, b: 0 };
 };
 
-const generateInsights = async (data: AnalysisState, isAcademicMode: boolean): Promise<AIInsight | null> => {
-  if (!process.env.API_KEY) {
+const generateInsights = async (data: AnalysisState, isAcademicMode: boolean, apiKey: string): Promise<AIInsight | null> => {
+  if (!apiKey) {
     console.warn("API Key missing");
     return null;
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   // Custom prompt construction based on mode
   let roleInstruction = "";
@@ -482,10 +484,10 @@ const generateInsights = async (data: AnalysisState, isAcademicMode: boolean): P
   }
 };
 
-const generateComparativeReport = async (analyses: AnalysisState[]): Promise<ComparativeReport | null> => {
-    if (!process.env.API_KEY) return null;
+const generateComparativeReport = async (analyses: AnalysisState[], apiKey: string): Promise<ComparativeReport | null> => {
+    if (!apiKey) return null;
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     const cleanData = analyses.map((a, index) => ({
         id: index + 1,
         author: a.author,
@@ -726,6 +728,12 @@ const App = () => {
   const [isComparing, setIsComparing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // API Key State
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return localStorage.getItem('MR_ARTHUR_API_KEY') || '';
+  });
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
   useEffect(() => {
       try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -871,6 +879,12 @@ const App = () => {
   };
 
   const handleGenerateInsights = async () => {
+    if (!apiKey) {
+        setShowKeyInput(true);
+        alert("Please enter your Gemini API Key in the settings menu (key icon) to use AI features.");
+        return;
+    }
+
     const newErrors: Record<string, string> = {};
     
     // Validate Description
@@ -904,12 +918,12 @@ const App = () => {
 
     setIsGenerating(true);
     try {
-        const result = await generateInsights(data, isAcademicMode);
+        const result = await generateInsights(data, isAcademicMode, apiKey);
         if (result) {
             setInsights(result);
             setViewMode('visualize');
         } else {
-             alert("Failed to generate insights. Ensure your API Key is set correctly in the environment.");
+             alert("Failed to generate insights. Please check your API Key.");
         }
     } catch (err) {
         console.error("Critical error generating insights", err);
@@ -1314,16 +1328,21 @@ const App = () => {
   );
 
   const runComparison = async () => {
+      if (!apiKey) {
+          setShowKeyInput(true);
+          alert("Please enter your Gemini API Key in the settings menu to compare reports.");
+          return;
+      }
       const targetAnalyses = filteredAnalyses;
       if (targetAnalyses.length === 0) return;
 
       setIsComparing(true);
       try {
-        const report = await generateComparativeReport(targetAnalyses);
+        const report = await generateComparativeReport(targetAnalyses, apiKey);
         if (report) {
             setComparativeReport(report);
         } else {
-            alert("Failed to generate comparative report. Ensure API Key is set.");
+            alert("Failed to generate comparative report. Ensure API Key is correct.");
         }
       } catch (err) {
         console.error(err);
@@ -1381,6 +1400,75 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            
+            {/* API Key Input */}
+            <div className="relative">
+                <button 
+                    onClick={() => setShowKeyInput(!showKeyInput)}
+                    className={`relative p-2 rounded-lg transition-all duration-300 ${apiKey ? 'text-green-600 bg-green-50 shadow-sm ring-1 ring-green-200' : 'text-gray-400 hover:text-gray-900 bg-gray-100 hover:bg-gray-200'}`}
+                    title={apiKey ? "API Key Active" : "Set Gemini API Key"}
+                >
+                    <Key size={20} className={apiKey ? "animate-pulse-slow" : ""} />
+                    {!apiKey && (
+                        <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                    )}
+                    {apiKey && (
+                         <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-green-500 ring-2 ring-white">
+                            <CheckCircle2 size={8} className="text-white" />
+                        </span>
+                    )}
+                </button>
+                {showKeyInput && (
+                    <div className="absolute top-full right-0 mt-3 w-80 bg-white p-5 rounded-2xl shadow-xl border border-gray-100 z-50 animate-in fade-in slide-in-from-top-2 ring-1 ring-black/5">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Gemini API Configuration</h3>
+                            <button onClick={() => setShowKeyInput(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                                <X size={14} />
+                            </button>
+                        </div>
+                        <div className="relative group">
+                            <input 
+                                type="password" 
+                                value={apiKey}
+                                onChange={(e) => {
+                                    setApiKey(e.target.value);
+                                    localStorage.setItem('MR_ARTHUR_API_KEY', e.target.value);
+                                }}
+                                placeholder="Paste API Key here..."
+                                className={`w-full text-sm border rounded-xl p-3 pr-10 outline-none transition-all duration-200 font-mono ${apiKey ? 'border-green-500 ring-1 ring-green-500 bg-green-50/20' : 'border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                            />
+                            {apiKey ? (
+                                <CheckCircle2 size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 animate-in zoom-in duration-300" />
+                            ) : (
+                                <Key size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                            )}
+                        </div>
+                        
+                        {apiKey ? (
+                            <div className="mt-3 flex items-start gap-2 text-xs text-green-700 bg-green-50 p-3 rounded-xl border border-green-100 animate-in fade-in slide-in-from-top-1">
+                                <Sparkles size={14} className="mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="font-semibold">API Key Accepted!</p>
+                                    <p className="opacity-90">AI generation features are now enabled and ready to use.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-3 text-[11px] text-gray-500 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                <p className="mb-2">Key is stored securely in your browser's local storage.</p>
+                                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1 hover:underline decoration-indigo-300 underline-offset-2 transition-all">
+                                    Get a free Gemini API key <ChevronRight size={10} />
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
+
             {/* Mode Toggle Switch */}
             <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
                 <button 
